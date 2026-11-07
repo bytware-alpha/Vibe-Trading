@@ -45,22 +45,22 @@ python -m pip install --upgrade pip
 # 1) lockfile dependencies (hashed). 2) this wheel, no PyPI override of the app.
 python -m pip install --require-hashes -r constraints.txt
 python -m pip install --no-deps --no-index \
-  "./vibe_trading_ai-0.1.19.post1-py3-none-any.whl"
+  "./vibe_trading_ai-0.1.19.post2-py3-none-any.whl"
 ```
 
-If a previous honest wheel (`0.1.19`, hash `e94693c4…`) is already in this
+If a previous honest wheel (`0.1.19` or `0.1.19.post1`) is already in this
 venv, upgrade in place (no need to reinstall the hashed lock):
 
 ```bash
 python -m pip install --force-reinstall --no-deps --no-index \
-  "./vibe_trading_ai-0.1.19.post1-py3-none-any.whl"
+  "./vibe_trading_ai-0.1.19.post2-py3-none-any.whl"
 ```
 
 Confirm the patched client, not PyPI 0.1.19:
 
 ```bash
 python -c "from src.trading.connectors.ibkr.oauth import honest_user_agent; print(honest_user_agent())"
-# expect: Vibe-Trading/0.1.19.post1
+# expect: Vibe-Trading/0.1.19.post2
 python -c "from src.tools import mcp as m; assert 'Mozilla/5.0' not in open(m.__file__).read()"
 command -v vibe-trading
 command -v vibe-trading-mcp
@@ -87,6 +87,33 @@ opens, and local MCP calls other than `get_account_summary` /
 `get_account_positions` are refused.
 
 Do **not** run `vibe-trading connector configure` for this profile. That command writes local TWS/Gateway host/port only. Official MCP is configured exclusively via `~/.vibe-trading/agent.json`.
+
+## Trading-capability seed (explicit opt-in)
+
+Use this only when you want the IBKR connection grant to include the
+documented trading scopes. It does **not** place orders. Local
+`vibe-trading-mcp` still has no `trading_place_order` / `trading_cancel_order`,
+and the IBKR adapter still refuses write/order tool names.
+
+This is a separate seed from read-only. It is **not** produced by widening
+`mcp.read` from server metadata.
+
+```bash
+cp agent.ibkr-trading.json "$HOME/.vibe-trading/agent.json"
+# or:
+python -c "from src.config.schema import format_ibkr_mcp_trading_server_seed_json; print(format_ibkr_mcp_trading_server_seed_json())" \
+  > "$HOME/.vibe-trading/agent.json"
+
+# Kill any leftover authorize listener from the earlier mcp.read attempt.
+# Trading uses a separate token cache so that registration is not reused.
+vibe-trading connector use ibkr-live-official-mcp-trading
+vibe-trading connector authorize ibkr-live-official-mcp-trading
+```
+
+Authorize URL must show
+`scope=mcp.read+mcp.write+mcp.orders.submit` (no extras). Tokens land in
+`~/.vibe-trading/live/ibkr/oauth-trading`. Same-machine browser +
+`http://localhost:8765/callback`.
 
 ## OAuth callback lifecycle (you run this on your Mac)
 

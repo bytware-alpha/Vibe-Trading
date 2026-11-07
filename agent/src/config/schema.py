@@ -45,6 +45,12 @@ LIVE_BROKER_READONLY_WILDCARD_ALLOWED_EXTRA_SCOPES: dict[str, frozenset[str]] = 
 LIVE_BROKER_WRITE_SCOPES: dict[str, frozenset[str]] = {
     "ibkr": frozenset({"mcp.write", "mcp.orders.submit"}),
 }
+# Explicit trading-capability probe: same wildcard discovery exception as the
+# read-only seed, but only when the operator listed the documented IBKR
+# official MCP scopes (never a silent union from metadata).
+LIVE_BROKER_TRADING_WILDCARD_REQUIRED_SCOPES: dict[str, frozenset[str]] = {
+    "ibkr": frozenset({"mcp.read", "mcp.write", "mcp.orders.submit"}),
+}
 ROBINHOOD_AGENT_CONFIG_PATH = "~/.vibe-trading/agent.json"
 LIVE_BROKER_WILDCARD_ALLOWLIST_ERROR = (
     "enabledTools allowlist ('*'); pin an explicit read-only tool list"
@@ -148,9 +154,12 @@ def _allows_readonly_wildcard_probe(
 ) -> bool:
     """Return whether a live broker may use ``enabled_tools=["*"]``.
 
-    The only supported exception today is IBKR's official MCP read probe:
-    tool names are not known before OAuth, but the token request can be pinned
-    to ``mcp.read``. Any write scope or missing read scope fails closed.
+    Supported IBKR exceptions: the official MCP read probe (``mcp.read`` only)
+    and the explicit trading-capability probe (documented
+    ``mcp.read`` + ``mcp.write`` + ``mcp.orders.submit``). Tool names are not
+    known before OAuth. A partial write set or any undeclared extra scope
+    fails closed. Metadata must never silently add write scopes onto a
+    read-only seed.
 
     Args:
         server_key: The MCP server key from config.
@@ -177,7 +186,13 @@ def _allows_readonly_wildcard_probe(
         broker, frozenset()
     )
     allowed = set(required | allowed_extras)
-    return required.issubset(scopes) and scopes.isdisjoint(write_scopes) and scopes <= allowed
+    if required.issubset(scopes) and scopes.isdisjoint(write_scopes) and scopes <= allowed:
+        return True
+    trading_required = LIVE_BROKER_TRADING_WILDCARD_REQUIRED_SCOPES.get(broker)
+    if not trading_required:
+        return False
+    allowed_trading = set(trading_required | allowed_extras)
+    return trading_required.issubset(scopes) and scopes <= allowed_trading
 
 # Canonical seed for the operator-side ``~/.vibe-trading/agent.json`` mcpServers
 # entry that wires the Robinhood Agentic Trading channel. It ships OFF-by-default
@@ -220,11 +235,10 @@ ROBINHOOD_MCP_SERVER_SEED: dict[str, object] = {
 
 # Canonical seed for IBKR's official remote MCP server. The endpoint is visible
 # from Claude's connector page / install command and advertises OAuth scopes
-# ``mcp.read`` and ``mcp.write``. This seed intentionally requests ONLY
-# ``mcp.read`` and uses ``enabled_tools=["*"]`` as a read-only discovery probe,
-# because IBKR tool names are not public until OAuth completes. If the operator
-# later requests ``mcp.write``, the wildcard exception no longer applies and the
-# config must pin an explicit tool allowlist plus pass the live order gate.
+# ``mcp.read``, ``mcp.write``, and ``mcp.orders.submit``. The default seed
+# requests ONLY ``mcp.read``. The explicit trading-capability seed
+# (:data:`IBKR_MCP_TRADING_SERVER_SEED`) lists those three documented scopes
+# by name — it is never produced by widening the read-only seed from metadata.
 IBKR_MCP_SERVER_SEED: dict[str, object] = {
     "type": "streamableHttp",
     "url": "https://api.ibkr.com/v1/api/mcp-public",
@@ -240,6 +254,20 @@ IBKR_MCP_SERVER_SEED: dict[str, object] = {
         # Stable loopback port so dynamic registration and later reconnects
         # present the same redirect_uri. Random ports look like a new public
         # client and IBKR then rejects the cached registration.
+        "callback_port": 8765,
+    },
+    "enabled_tools": ["*"],
+}
+
+IBKR_MCP_TRADING_SERVER_SEED: dict[str, object] = {
+    "type": "streamableHttp",
+    "url": "https://api.ibkr.com/v1/api/mcp-public",
+    "init_timeout": 300,
+    "auth": {
+        "type": "oauth",
+        "scopes": ["mcp.read", "mcp.write", "mcp.orders.submit"],
+        "client_name": "Vibe-Trading",
+        "cache_dir": "~/.vibe-trading/live/ibkr/oauth-trading",
         "callback_port": 8765,
     },
     "enabled_tools": ["*"],
@@ -347,6 +375,20 @@ def ibkr_mcp_server_seed_config() -> dict[str, object]:
 def format_ibkr_mcp_server_seed_json() -> str:
     """Format the canonical IBKR read-only ``mcpServers`` seed as JSON."""
     return json.dumps(ibkr_mcp_server_seed_config(), indent=2)
+
+
+def ibkr_mcp_trading_server_seed_config() -> dict[str, object]:
+    """Return the copy-pasteable IBKR trading-capability ``mcpServers`` seed."""
+    return {
+        "mcpServers": {
+            "ibkr": _to_wire_config_value(IBKR_MCP_TRADING_SERVER_SEED),
+        }
+    }
+
+
+def format_ibkr_mcp_trading_server_seed_json() -> str:
+    """Format the explicit IBKR trading-capability ``mcpServers`` seed as JSON."""
+    return json.dumps(ibkr_mcp_trading_server_seed_config(), indent=2)
 
 
 def format_robinhood_mcp_config_guidance(*, reason: str = "missing") -> str:

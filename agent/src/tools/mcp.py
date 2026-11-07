@@ -49,7 +49,7 @@ from src.trading.connectors.ibkr.oauth import (
     IBKR_OAUTH_CALLBACK_PORT,
     IBKROAuthScopeError,
     apply_honest_ibkr_client_headers,
-    assert_ibkr_authorization_url_is_readonly,
+    assert_ibkr_authorization_url_matches_configured,
     assert_ibkr_readonly_remote_tool,
     authorization_preflight_accepted,
     honest_user_agent,
@@ -59,7 +59,7 @@ from src.trading.connectors.ibkr.oauth import (
     pin_configured_ibkr_oauth_scopes,
     pinned_ibkr_oauth_metadata,
     public_client_registration_metadata,
-    require_ibkr_readonly_oauth_scopes,
+    require_ibkr_configured_oauth_scopes,
 )
 
 logger = logging.getLogger(__name__)
@@ -166,19 +166,19 @@ class _IBKROAuth(_GuardedOAuth):
     client registration, a stable loopback redirect, RFC 8414 issuer alignment,
     stale-registration recovery, and HTTP 301 on the authorize pre-flight.
     Browser User-Agent impersonation and spoofed Origin headers are not applied.
-    Configured ``mcp.read`` is never widened from ``scopes_supported``.
+    Configured scopes are never widened from ``scopes_supported``.
     """
 
     def __init__(self, *args: Any, allow_interactive: bool = True, **kwargs: Any) -> None:
         super().__init__(*args, allow_interactive=allow_interactive, **kwargs)
-        require_ibkr_readonly_oauth_scopes(self._configured_oauth_scopes())
+        require_ibkr_configured_oauth_scopes(self._configured_oauth_scopes())
 
     def _configured_oauth_scopes(self) -> list[str]:
         """Return operator-configured IBKR scopes (never metadata defaults)."""
         return list(parse_oauth_scope_tokens(getattr(self, "_scopes", None)))
 
     def _pin_client_metadata_scope(self) -> None:
-        """Overwrite FastMCP/mcp scope selection with configured mcp.read-only."""
+        """Overwrite FastMCP/mcp scope selection with configured scopes only."""
         context = getattr(self, "context", None)
         metadata = getattr(context, "client_metadata", None) if context is not None else None
         if metadata is None:
@@ -189,7 +189,7 @@ class _IBKROAuth(_GuardedOAuth):
         )
 
     def _rewrite_registration_scope(self, request: httpx.Request) -> httpx.Request:
-        """Pin DCR JSON ``scope`` so registration cannot advertise write grants."""
+        """Pin DCR JSON ``scope`` to configured scopes, never metadata extras."""
         if request.method.upper() != "POST":
             return request
         if not str(request.url.path).rstrip("/").endswith("register"):
@@ -274,7 +274,7 @@ class _IBKROAuth(_GuardedOAuth):
             await flow.aclose()
 
     async def redirect_handler(self, authorization_url: str) -> None:
-        assert_ibkr_authorization_url_is_readonly(
+        assert_ibkr_authorization_url_matches_configured(
             authorization_url,
             configured=self._configured_oauth_scopes(),
         )
@@ -789,7 +789,7 @@ class MCPServerAdapter:
                 )
                 oauth_scopes = list(oauth_config.scopes)
                 if is_ibkr:
-                    require_ibkr_readonly_oauth_scopes(oauth_scopes)
+                    require_ibkr_configured_oauth_scopes(oauth_scopes)
                 auth = oauth_type(
                     scopes=oauth_scopes if (oauth_scopes or is_ibkr) else None,
                     client_name=oauth_config.client_name,

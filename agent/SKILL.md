@@ -1,6 +1,6 @@
 ---
 name: vibe-trading
-version: 0.1.19.post1
+version: 0.1.19.post2
 description: Professional finance research toolkit — backtesting (12 engines + benchmark comparison panel), factor analysis, Alpha Zoo (478 pre-built alphas across qlib158/alpha101/gtja191/academic/fundamental), options pricing, 89 finance skills, 30 multi-agent swarm teams, Trade Journal analyzer, and Shadow Account (extract → backtest → render) across 28 market-data sources (tushare, yfinance, okx, binance, akshare, baostock, tencent, mootdx, ccxt, futu, mt5, tickerall, local, eastmoney, sina, stooq, yahoo, pykrx, india_broker, longbridge, nobitex, wallex, plus optional-key finnhub/alphavantage/tiingo/fmp/gildata).
 dependencies:
   python: ">=3.11"
@@ -278,7 +278,9 @@ Add Interactive Brokers' official MCP endpoint as a read-only external server:
 }
 ```
 
-Authorize it with `vibe-trading connector authorize ibkr-live-official-mcp-readonly`
+Authorize read-only with `vibe-trading connector authorize ibkr-live-official-mcp-readonly`,
+or the explicit trading-capability seed with
+`vibe-trading connector authorize ibkr-live-official-mcp-trading`,
 on the account owner's machine (browser + `http://localhost:8765/callback`).
 The client is a public OAuth app (`token_endpoint_auth_method: none`, product
 User-Agent `Vibe-Trading/<version>`); it does not impersonate a browser. The

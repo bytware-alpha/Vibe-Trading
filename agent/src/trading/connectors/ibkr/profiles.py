@@ -41,4 +41,20 @@ IBKR_PROFILES: tuple[TradingProfile, ...] = (
             "get_account_summary and get_account_positions read-only tools."
         ),
     ),
+    TradingProfile(
+        id="ibkr-live-official-mcp-trading",
+        connector="ibkr",
+        label="IBKR Live · Official MCP Trading Capability",
+        environment="live",
+        transport="remote_mcp",
+        capabilities=("account.read", "positions.read"),
+        readonly=True,
+        config={"server": "ibkr"},
+        notes=(
+            "Requires IBKR official MCP OAuth for documented scopes "
+            "mcp.read, mcp.write, and mcp.orders.submit. Authorizes trading "
+            "capability on the connection only; this profile does not expose "
+            "order placement through vibe-trading-mcp or trading_* tools."
+        ),
+    ),
 )

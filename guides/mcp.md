@@ -231,9 +231,13 @@ opens. Write/order remote tools are also refused at the local MCP adapter
 The wildcard is accepted only for IBKR's `mcp.read` probe. Authorizing this
 profile confirms access to IBKR's official read scope; the connector maps the
 verified `get_account_summary` / `get_account_positions` tools into generic
-account and position reads. Adding `mcp.write` or `mcp.orders.submit` to the
-seed is rejected for the wildcard probe, and this OAuth client will not
-request those scopes.
+account and position reads. Adding `mcp.write` or `mcp.orders.submit` to a **read-only** seed is
+rejected. An explicit trading-capability seed
+(`packaging/ibkr-official-mcp-readonly/agent.ibkr-trading.json`, profile
+`ibkr-live-official-mcp-trading`) lists the documented
+`mcp.read` + `mcp.write` + `mcp.orders.submit` set by name. That grant
+authorizes trading capability on the connection; it does not expose order
+placement through `vibe-trading-mcp`. Metadata still cannot add extra scopes.
 
 If IBKR issues a pre-registered OAuth client, add `clientId` and `clientSecret`
 inside `auth`.

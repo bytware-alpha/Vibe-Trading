@@ -18,7 +18,9 @@ from pathlib import Path
 from src.config.schema import (
     AgentConfig,
     IBKR_MCP_SERVER_SEED,
+    IBKR_MCP_TRADING_SERVER_SEED,
     format_ibkr_mcp_server_seed_json,
+    format_ibkr_mcp_trading_server_seed_json,
 )
 from src.live.order_guard import LiveOrderGuardTool
 from src.live.registry import is_live_broker, wrap_live_broker_tools
@@ -88,6 +90,28 @@ def test_packaging_seed_json_matches_canonical_ibkr_seed() -> None:
         (repo_root / "packaging/ibkr-official-mcp-readonly/agent.ibkr-readonly.json").read_text()
     )
     canonical = json.loads(format_ibkr_mcp_server_seed_json())
+    assert packaged == canonical
+
+
+def test_ibkr_trading_seed_validates_as_explicit_documented_scopes() -> None:
+    cfg = AgentConfig.model_validate({"mcpServers": {"ibkr": IBKR_MCP_TRADING_SERVER_SEED}})
+    server = cfg.mcp_servers["ibkr"]
+
+    assert server.auth is not None
+    assert server.auth.scopes == ["mcp.read", "mcp.write", "mcp.orders.submit"]
+    assert server.auth.callback_port == 8765
+    assert server.auth.cache_dir == "~/.vibe-trading/live/ibkr/oauth-trading"
+    assert server.enabled_tools == ["*"]
+
+
+def test_packaging_trading_seed_json_matches_canonical_ibkr_trading_seed() -> None:
+    import json
+
+    repo_root = Path(__file__).resolve().parents[2]
+    packaged = json.loads(
+        (repo_root / "packaging/ibkr-official-mcp-readonly/agent.ibkr-trading.json").read_text()
+    )
+    canonical = json.loads(format_ibkr_mcp_trading_server_seed_json())
     assert packaged == canonical
 
 

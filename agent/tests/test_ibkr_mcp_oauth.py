@@ -21,7 +21,7 @@ import httpx
 import pytest
 from mcp.client.auth.exceptions import OAuthRegistrationError
 
-from src.config.schema import MCPServerConfig
+from src.config.schema import AgentConfig, MCPServerConfig
 from src.tools.mcp import MCPServerAdapter
 from src.trading.connectors.ibkr.oauth import (
     BROWSER_IMPERSONATION_MARKERS,
@@ -30,6 +30,7 @@ from src.trading.connectors.ibkr.oauth import (
     IBKROAuthScopeError,
     apply_honest_ibkr_client_headers,
     assert_ibkr_authorization_url_is_readonly,
+    assert_ibkr_authorization_url_matches_configured,
     authorization_url_scope_tokens,
     classify_unauthenticated_mcp_response,
     honest_user_agent,
@@ -39,6 +40,7 @@ from src.trading.connectors.ibkr.oauth import (
     pinned_ibkr_oauth_metadata,
     probe_ibkr_mcp_public_unauthenticated,
     public_client_registration_metadata,
+    require_ibkr_configured_oauth_scopes,
     require_ibkr_readonly_oauth_scopes,
 )
 
@@ -64,14 +66,14 @@ _AS_METADATA = {
 }
 
 
-def _ibkr_auth(tmp_path):
+def _ibkr_auth(tmp_path, *, scopes: list[str] | None = None):
     cfg = MCPServerConfig.model_validate(
         {
             "type": "streamableHttp",
             "url": _MCP_URL,
             "auth": {
                 "type": "oauth",
-                "scopes": ["mcp.read"],
+                "scopes": list(scopes or ["mcp.read"]),
                 "client_name": "Vibe-Trading",
                 "cacheDir": str(tmp_path),
             },
@@ -81,11 +83,17 @@ def _ibkr_auth(tmp_path):
     return MCPServerAdapter("ibkr", cfg)._build_client().transport.auth
 
 
-def _prm_document(authorization_servers: list[str]) -> dict[str, object]:
+def _prm_document(
+    authorization_servers: list[str],
+    extra_scopes: list[str] | None = None,
+) -> dict[str, object]:
+    scopes = ["mcp.read", "mcp.write", "mcp.orders.submit"]
+    if extra_scopes:
+        scopes = scopes + list(extra_scopes)
     return {
         "resource": _MCP_URL,
         "authorization_servers": authorization_servers,
-        "scopes_supported": ["mcp.read", "mcp.write", "mcp.orders.submit"],
+        "scopes_supported": scopes,
         "bearer_methods_supported": ["header"],
     }
 
@@ -495,6 +503,16 @@ def test_configured_readonly_scopes_are_not_widened_by_metadata() -> None:
         require_ibkr_readonly_oauth_scopes(["mcp.read", "mcp.write"])
     with pytest.raises(IBKROAuthScopeError, match="write/order"):
         require_ibkr_readonly_oauth_scopes(["mcp.orders.submit"])
+    trading = pin_configured_ibkr_oauth_scopes(
+        configured=["mcp.read", "mcp.write", "mcp.orders.submit"],
+        metadata_scope="mcp.read mcp.write mcp.orders.submit mcp.admin",
+    )
+    assert trading == "mcp.read mcp.write mcp.orders.submit"
+    assert require_ibkr_configured_oauth_scopes(
+        ["mcp.read", "mcp.write", "mcp.orders.submit"]
+    ) == "mcp.read mcp.write mcp.orders.submit"
+    with pytest.raises(IBKROAuthScopeError, match="missing"):
+        require_ibkr_configured_oauth_scopes(["mcp.read", "mcp.write"])
 
 
 def test_authorize_url_with_write_scopes_is_rejected_before_browser(tmp_path) -> None:
@@ -522,7 +540,12 @@ def test_authorize_url_with_write_scopes_is_rejected_before_browser(tmp_path) ->
         assert_ibkr_authorization_url_is_readonly(widened, configured=["mcp.read"])
 
 
-def _registration_success_handler(seen: dict[str, object], *, www_authenticate: str):
+def _registration_success_handler(
+    seen: dict[str, object],
+    *,
+    www_authenticate: str,
+    extra_scopes: list[str] | None = None,
+):
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         if url == _MCP_URL:
@@ -534,7 +557,7 @@ def _registration_success_handler(seen: dict[str, object], *, www_authenticate: 
         if url == _PRM_URL:
             return httpx.Response(
                 200,
-                json=_prm_document(["https://api.ibkr.com"]),
+                json=_prm_document(["https://api.ibkr.com"], extra_scopes=extra_scopes),
                 request=request,
             )
         if url == _AS_METADATA_URL:
@@ -654,3 +677,76 @@ def test_ibkr_adapter_refuses_write_tool_calls_without_touching_the_client(
     allowed = adapter.call_tool("get_account_summary", {})
     assert allowed["status"] == "error"
     assert allowed["error_type"] == "AssertionError"
+
+
+def test_trading_authorize_url_uses_documented_scopes_without_metadata_extras(
+    tmp_path,
+) -> None:
+    auth = _ibkr_auth(
+        tmp_path, scopes=["mcp.read", "mcp.write", "mcp.orders.submit"]
+    )
+    seen: dict[str, object] = {}
+    handler = _registration_success_handler(
+        seen,
+        www_authenticate=f'Bearer resource_metadata="{_PRM_URL}"',
+        extra_scopes=["mcp.admin"],
+    )
+    url = _authorize_url_from_flow(auth, handler)
+    expected = {"mcp.read", "mcp.write", "mcp.orders.submit"}
+    assert seen["register-scope"] == "mcp.read mcp.write mcp.orders.submit"
+    assert set(authorization_url_scope_tokens(url)) == expected
+    assert_ibkr_authorization_url_matches_configured(
+        url, configured=["mcp.read", "mcp.write", "mcp.orders.submit"]
+    )
+    assert "mcp.admin" not in url.lower()
+
+
+def test_trading_wildcard_seed_is_accepted_only_for_documented_scope_set() -> None:
+    cfg = AgentConfig.model_validate(
+        {
+            "mcpServers": {
+                "ibkr": {
+                    "type": "streamableHttp",
+                    "url": _MCP_URL,
+                    "auth": {
+                        "type": "oauth",
+                        "scopes": ["mcp.read", "mcp.write", "mcp.orders.submit"],
+                    },
+                    "enabledTools": ["*"],
+                }
+            }
+        }
+    )
+    assert cfg.mcp_servers["ibkr"].auth is not None
+    assert cfg.mcp_servers["ibkr"].auth.scopes == [
+        "mcp.read",
+        "mcp.write",
+        "mcp.orders.submit",
+    ]
+
+
+def test_trading_adapter_still_refuses_order_tool_calls(tmp_path) -> None:
+    cfg = MCPServerConfig.model_validate(
+        {
+            "type": "streamableHttp",
+            "url": _MCP_URL,
+            "auth": {
+                "type": "oauth",
+                "scopes": ["mcp.read", "mcp.write", "mcp.orders.submit"],
+                "cacheDir": str(tmp_path),
+            },
+            "enabledTools": ["*"],
+        }
+    )
+
+    class _ForbiddenClient:
+        async def __aenter__(self):
+            raise AssertionError("orders must not reach the IBKR MCP client")
+
+        async def __aexit__(self, *args):
+            return None
+
+    adapter = MCPServerAdapter("ibkr", cfg, client_factory=_ForbiddenClient)
+    payload = adapter.call_tool("place_order", {"symbol": "AAPL"})
+    assert payload["status"] == "error"
+    assert payload["error_type"] == "IBKROAuthScopeError"
