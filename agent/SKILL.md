@@ -264,6 +264,7 @@ Add Interactive Brokers' official MCP endpoint as a read-only external server:
     "ibkr": {
       "type": "streamableHttp",
       "url": "https://api.ibkr.com/v1/api/mcp-public",
+      "initTimeout": 300,
       "auth": {
         "type": "oauth",
         "scopes": ["mcp.read"],

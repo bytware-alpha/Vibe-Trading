@@ -228,6 +228,10 @@ ROBINHOOD_MCP_SERVER_SEED: dict[str, object] = {
 IBKR_MCP_SERVER_SEED: dict[str, object] = {
     "type": "streamableHttp",
     "url": "https://api.ibkr.com/v1/api/mcp-public",
+    # Browser consent can exceed the default 30s tool timeout; authorize
+    # still raises this to the live-authorize deadline, and reconnects keep
+    # a 300s initialize window without widening ordinary tool calls.
+    "init_timeout": 300,
     "auth": {
         "type": "oauth",
         "scopes": ["mcp.read"],
@@ -329,6 +333,20 @@ def robinhood_mcp_server_seed_config() -> dict[str, object]:
 def format_robinhood_mcp_server_seed_json() -> str:
     """Format the canonical Robinhood read-only ``mcpServers`` seed as JSON."""
     return json.dumps(robinhood_mcp_server_seed_config(), indent=2)
+
+
+def ibkr_mcp_server_seed_config() -> dict[str, object]:
+    """Return the copy-pasteable IBKR official MCP ``mcpServers`` config seed."""
+    return {
+        "mcpServers": {
+            "ibkr": _to_wire_config_value(IBKR_MCP_SERVER_SEED),
+        }
+    }
+
+
+def format_ibkr_mcp_server_seed_json() -> str:
+    """Format the canonical IBKR read-only ``mcpServers`` seed as JSON."""
+    return json.dumps(ibkr_mcp_server_seed_config(), indent=2)
 
 
 def format_robinhood_mcp_config_guidance(*, reason: str = "missing") -> str:

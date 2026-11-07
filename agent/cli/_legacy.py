@@ -3439,6 +3439,20 @@ def _print_missing_live_channel_config(key: str) -> None:
         console.print(format_robinhood_mcp_config_guidance(reason=reason), markup=False, soft_wrap=True)
         return
 
+    if key == "ibkr":
+        from src.config.schema import format_ibkr_mcp_server_seed_json
+
+        console.print("[red]IBKR official MCP is not configured.[/red]")
+        console.print(
+            "Add this read-only seed to ~/.vibe-trading/agent.json, then rerun "
+            "`vibe-trading connector authorize ibkr-live-official-mcp-readonly` "
+            "on the machine that can open a browser and bind localhost:8765:\n"
+            f"{format_ibkr_mcp_server_seed_json()}",
+            markup=False,
+            soft_wrap=True,
+        )
+        return
+
     console.print(
         f"[red]No live channel configured for '{key}'.[/red] "
         "Add the broker's mcpServers entry to ~/.vibe-trading/agent.json first."

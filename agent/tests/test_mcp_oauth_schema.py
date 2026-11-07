@@ -16,6 +16,7 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import patch
 
 import httpx
@@ -138,8 +139,22 @@ def test_ibkr_seed_is_official_readonly_oauth_probe() -> None:
     assert ibkr.auth.cache_dir == "~/.vibe-trading/live/ibkr/oauth"
     assert ibkr.auth.callback_port == 8765
     assert ibkr.auth.client_name == "Vibe-Trading"
+    assert ibkr.init_timeout == 300
     assert ibkr.enabled_tools == ["*"]
     assert "ibkr" in LIVE_BROKER_SERVER_KEYS
+
+
+def test_ibkr_seed_json_is_copy_pasteable_public_client() -> None:
+    from src.config.schema import format_ibkr_mcp_server_seed_json
+
+    payload = json.loads(format_ibkr_mcp_server_seed_json())
+    ibkr = payload["mcpServers"]["ibkr"]
+    assert ibkr["url"] == "https://api.ibkr.com/v1/api/mcp-public"
+    assert ibkr["auth"]["scopes"] == ["mcp.read"]
+    assert ibkr["auth"]["callbackPort"] == 8765
+    assert ibkr["auth"]["clientName"] == "Vibe-Trading"
+    assert ibkr["initTimeout"] == 300
+    assert "clientSecret" not in ibkr["auth"]
 
 
 # --------------------------------------------------------------------------- #

@@ -184,7 +184,9 @@ endpoint in read-only mode as a **public OAuth client** (no client secret,
 identifies itself as `Vibe-Trading/<version>`. It does not impersonate a
 browser User-Agent and does not send a spoofed `Origin`.
 
-Add this to `~/.vibe-trading/agent.json`:
+Add this to `~/.vibe-trading/agent.json` (or install the wheel and copy
+`packaging/ibkr-official-mcp-readonly/agent.ibkr-readonly.json`; see that
+directory's `INSTALL.md` for a no-clone wheel install):
 
 ```json
 {
@@ -192,6 +194,7 @@ Add this to `~/.vibe-trading/agent.json`:
     "ibkr": {
       "type": "streamableHttp",
       "url": "https://api.ibkr.com/v1/api/mcp-public",
+      "initTimeout": 300,
       "auth": {
         "type": "oauth",
         "scopes": ["mcp.read"],

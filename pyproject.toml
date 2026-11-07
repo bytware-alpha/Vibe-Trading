@@ -104,6 +104,10 @@ Documentation = "https://vibetrading.wiki/docs/"
 Repository = "https://github.com/HKUDS/Vibe-Trading"
 Issues = "https://github.com/HKUDS/Vibe-Trading/issues"
 
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project.scripts]
 vibe-trading = "cli:main"
 vibe-trading-mcp = "mcp_server:main"

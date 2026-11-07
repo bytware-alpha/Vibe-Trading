@@ -13,7 +13,13 @@ import pytest
 from fastmcp.client.client import CallToolResult
 from mcp import types as mcp_types
 
-from src.config.schema import AgentConfig, IBKR_MCP_SERVER_SEED
+from pathlib import Path
+
+from src.config.schema import (
+    AgentConfig,
+    IBKR_MCP_SERVER_SEED,
+    format_ibkr_mcp_server_seed_json,
+)
 from src.live.order_guard import LiveOrderGuardTool
 from src.live.registry import is_live_broker, wrap_live_broker_tools
 from src.tools.mcp import MCPRemoteTool, build_mcp_tool_wrappers
@@ -70,7 +76,19 @@ def test_ibkr_seed_validates_as_readonly_probe() -> None:
     assert server.auth.scopes == ["mcp.read"]
     assert server.auth.callback_port == 8765
     assert server.auth.client_name == "Vibe-Trading"
+    assert server.init_timeout == 300
     assert server.enabled_tools == ["*"]
+
+
+def test_packaging_seed_json_matches_canonical_ibkr_seed() -> None:
+    import json
+
+    repo_root = Path(__file__).resolve().parents[2]
+    packaged = json.loads(
+        (repo_root / "packaging/ibkr-official-mcp-readonly/agent.ibkr-readonly.json").read_text()
+    )
+    canonical = json.loads(format_ibkr_mcp_server_seed_json())
+    assert packaged == canonical
 
 
 def test_ibkr_alias_url_resolves_to_live_broker_and_wraps_writes() -> None:
