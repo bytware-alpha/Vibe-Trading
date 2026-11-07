@@ -233,6 +233,10 @@ IBKR_MCP_SERVER_SEED: dict[str, object] = {
         "scopes": ["mcp.read"],
         "client_name": "Vibe-Trading",
         "cache_dir": "~/.vibe-trading/live/ibkr/oauth",
+        # Stable loopback port so dynamic registration and later reconnects
+        # present the same redirect_uri. Random ports look like a new public
+        # client and IBKR then rejects the cached registration.
+        "callback_port": 8765,
     },
     "enabled_tools": ["*"],
 }

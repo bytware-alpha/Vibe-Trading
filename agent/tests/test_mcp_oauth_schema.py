@@ -16,7 +16,6 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import json
 from unittest.mock import patch
 
 import httpx
@@ -25,7 +24,6 @@ from fastmcp.client.auth import OAuth
 from fastmcp.client.transports.http import StreamableHttpTransport
 from fastmcp.client.transports.sse import SSETransport
 from fastmcp.client.transports.stdio import StdioTransport
-from mcp.client.auth.exceptions import OAuthRegistrationError
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from pydantic import AnyHttpUrl, ValidationError
 
@@ -138,6 +136,8 @@ def test_ibkr_seed_is_official_readonly_oauth_probe() -> None:
     assert ibkr.auth is not None and ibkr.auth.type == "oauth"
     assert ibkr.auth.scopes == ["mcp.read"]
     assert ibkr.auth.cache_dir == "~/.vibe-trading/live/ibkr/oauth"
+    assert ibkr.auth.callback_port == 8765
+    assert ibkr.auth.client_name == "Vibe-Trading"
     assert ibkr.enabled_tools == ["*"]
     assert "ibkr" in LIVE_BROKER_SERVER_KEYS
 
@@ -263,100 +263,6 @@ def test_build_client_yields_oauth_streamable_transport() -> None:
     assert transport.auth._client_id == "client-id"
     assert transport.auth._client_secret == "client-secret"
     assert transport.auth._client_metadata_url == "https://example.com/oauth/client.json"
-
-
-def test_ibkr_oauth_registration_uses_browser_headers(tmp_path) -> None:
-    cfg = MCPServerConfig.model_validate(
-        {
-            "type": "streamableHttp",
-            "url": "https://api.ibkr.com/v1/api/mcp-public",
-            "auth": {
-                "type": "oauth",
-                "scopes": ["mcp.read"],
-                "cacheDir": str(tmp_path),
-            },
-            "enabledTools": ["*"],
-        }
-    )
-    transport = MCPServerAdapter("ibkr", cfg)._build_client().transport
-    assert transport.auth.redirect_port == 8765
-    seen: dict[str, str | None] = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        url = str(request.url)
-        if url == cfg.url:
-            seen["mcp-accept"] = request.headers.get("accept")
-            return httpx.Response(
-                401,
-                headers={
-                    "WWW-Authenticate": (
-                        'Bearer resource_metadata="'
-                        f'{cfg.url}/.well-known/oauth-protected-resource"'
-                    )
-                },
-                request=request,
-            )
-        # Mirrors IBKR's live documents, fetched 2026-10-21: the protected
-        # resource names https://api.ibkr.com, the issuer every well-known
-        # path reports (until 2026-09 it named https://api.ibkr.com/oauth2,
-        # which mcp>=1.30's RFC 8414 issuer check refuses).
-        if url == f"{cfg.url}/.well-known/oauth-protected-resource":
-            return httpx.Response(
-                200,
-                json={
-                    "resource": cfg.url,
-                    "authorization_servers": ["https://api.ibkr.com"],
-                    "scopes_supported": ["mcp.read", "mcp.write", "mcp.orders.submit"],
-                    "bearer_methods_supported": ["header"],
-                },
-                request=request,
-            )
-        if url in {
-            "https://api.ibkr.com/.well-known/oauth-authorization-server",
-            "https://api.ibkr.com/.well-known/oauth-authorization-server/oauth2",
-            "https://api.ibkr.com/oauth2/.well-known/oauth-authorization-server",
-        }:
-            return httpx.Response(
-                200,
-                json={
-                    "issuer": "https://api.ibkr.com",
-                    "authorization_endpoint": "https://api.ibkr.com/oauth2/authorize",
-                    "token_endpoint": "https://api.ibkr.com/oauth2/api/v1/token",
-                    "registration_endpoint": "https://api.ibkr.com/oauth2/register",
-                    "code_challenge_methods_supported": ["S256"],
-                },
-                request=request,
-            )
-        if url == "https://api.ibkr.com/oauth2/register":
-            seen["user-agent"] = request.headers.get("user-agent")
-            seen["origin"] = request.headers.get("origin")
-            seen["accept"] = request.headers.get("accept")
-            seen["token-endpoint-auth-method"] = json.loads(request.content).get(
-                "token_endpoint_auth_method"
-            )
-            return httpx.Response(403, text="stop", request=request)
-        return httpx.Response(404, request=request)
-
-    async def run() -> None:
-        async with httpx.AsyncClient(
-            auth=transport.auth,
-            transport=httpx.MockTransport(handler),
-        ) as client:
-            await client.get(
-                cfg.url,
-                headers={"Accept": "application/json, text/event-stream"},
-            )
-
-    with pytest.raises(OAuthRegistrationError):
-        asyncio.run(run())
-
-    assert seen == {
-        "user-agent": "Mozilla/5.0",
-        "origin": "https://api.ibkr.com",
-        "accept": "application/json",
-        "mcp-accept": "application/json, text/event-stream",
-        "token-endpoint-auth-method": "none",
-    }
 
 
 def test_ibkr_oauth_accepts_authorization_redirect(tmp_path) -> None:

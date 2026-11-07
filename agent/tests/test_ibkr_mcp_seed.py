@@ -68,6 +68,8 @@ def test_ibkr_seed_validates_as_readonly_probe() -> None:
     assert server.url == "https://api.ibkr.com/v1/api/mcp-public"
     assert server.auth is not None
     assert server.auth.scopes == ["mcp.read"]
+    assert server.auth.callback_port == 8765
+    assert server.auth.client_name == "Vibe-Trading"
     assert server.enabled_tools == ["*"]
 
 

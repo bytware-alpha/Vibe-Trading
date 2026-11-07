@@ -34,7 +34,6 @@ except ModuleNotFoundError:
 from fastmcp.exceptions import McpError, ToolError
 from key_value.aio.stores.filetree import FileTreeStore, FileTreeV1KeySanitizationStrategy
 from mcp import types as mcp_types
-from mcp.shared.auth import OAuthMetadata
 from pydantic_core import PydanticSerializationError, to_jsonable_python
 
 from src.agent.tools import BaseTool
@@ -44,6 +43,17 @@ from src.config.schema import (
     MCPServerConfig,
     live_broker_key_for_entry,
     robinhood_readonly_enabled_tools,
+)
+from src.trading.connectors.ibkr.oauth import (
+    IBKR_OAUTH_ACCEPT,
+    IBKR_OAUTH_CALLBACK_PORT,
+    apply_honest_ibkr_client_headers,
+    authorization_preflight_accepted,
+    honest_user_agent,
+    is_ibkr_mcp_host,
+    normalize_ibkr_authorization_server,
+    pinned_ibkr_oauth_metadata,
+    public_client_registration_metadata,
 )
 
 logger = logging.getLogger(__name__)
@@ -144,16 +154,22 @@ class _GuardedOAuth(OAuth):
 
 
 class _IBKROAuth(_GuardedOAuth):
-    """Add the browser headers required by IBKR's OAuth WAF."""
+    """Public-client OAuth for IBKR's official MCP, with honest client identity.
+
+    Compatibility is limited to documented OAuth/MCP protocol issues: public
+    client registration, a stable loopback redirect, RFC 8414 issuer alignment,
+    stale-registration recovery, and HTTP 301 on the authorize pre-flight.
+    Browser User-Agent impersonation and spoofed Origin headers are not applied.
+    """
+
+    def _select_authorization_server(self, advertised: list[str]) -> str:
+        """Prefer IBKR's published issuer over the path-suffixed ``/oauth2`` alias."""
+        selected = advertised[0] if advertised else "https://api.ibkr.com"
+        return normalize_ibkr_authorization_server(str(selected))
 
     async def _refresh_token(self) -> httpx.Request:
         if self.context.oauth_metadata is None:
-            self.context.oauth_metadata = OAuthMetadata(
-                issuer="https://api.ibkr.com",
-                authorization_endpoint="https://api.ibkr.com/oauth2/authorize",
-                token_endpoint="https://api.ibkr.com/oauth2/api/v1/token",
-                registration_endpoint="https://api.ibkr.com/oauth2/register",
-            )
+            self.context.oauth_metadata = pinned_ibkr_oauth_metadata()
         return await super()._refresh_token()
 
     async def _initialize(self) -> None:
@@ -185,12 +201,8 @@ class _IBKROAuth(_GuardedOAuth):
                     oauth_request = await flow.asend(response)
                 except StopAsyncIteration:
                     break
-                if oauth_request.url.host == "api.ibkr.com":
-                    oauth_request.headers["User-Agent"] = "Mozilla/5.0"
-                    if not oauth_request.url.path.startswith("/v1/api/mcp"):
-                        oauth_request.headers["Accept"] = "application/json"
-                    if oauth_request.url.path == "/oauth2/register":
-                        oauth_request.headers["Origin"] = "https://api.ibkr.com"
+                if is_ibkr_mcp_host(oauth_request.url.host):
+                    apply_honest_ibkr_client_headers(oauth_request)
                 response = yield oauth_request
         finally:
             await flow.aclose()
@@ -203,8 +215,8 @@ class _IBKROAuth(_GuardedOAuth):
             response = await client.get(
                 authorization_url,
                 headers={
-                    "User-Agent": "Mozilla/5.0",
-                    "Accept": "application/json",
+                    "User-Agent": honest_user_agent(),
+                    "Accept": IBKR_OAUTH_ACCEPT,
                 },
                 follow_redirects=False,
             )
@@ -212,7 +224,7 @@ class _IBKROAuth(_GuardedOAuth):
             raise ClientNotFoundError(
                 "OAuth client not found - cached credentials may be stale"
             )
-        if response.status_code not in (200, 301, 302, 303, 307, 308):
+        if not authorization_preflight_accepted(response.status_code):
             raise RuntimeError(
                 f"Unexpected authorization response: {response.status_code}"
             )
@@ -698,18 +710,23 @@ class MCPServerAdapter:
                 # transport. Token cache is persistent (FileTreeStore), so the
                 # channel stays authorized across CLI invocations and refresh is
                 # handled inside the MCP lib's OAuthClientProvider.
-                is_ibkr = urlparse(self.server_config.url).hostname == "api.ibkr.com"
+                is_ibkr = is_ibkr_mcp_host(urlparse(self.server_config.url).hostname)
                 oauth_type = _IBKROAuth if is_ibkr else _GuardedOAuth
+                oauth_headers = (
+                    {"User-Agent": honest_user_agent(), "Accept": IBKR_OAUTH_ACCEPT}
+                    if is_ibkr
+                    else None
+                )
                 auth = oauth_type(
                     scopes=list(oauth_config.scopes) or None,
                     client_name=oauth_config.client_name,
                     token_storage=_build_token_store(oauth_config.cache_dir),
                     additional_client_metadata=(
-                        {"token_endpoint_auth_method": "none"} if is_ibkr else None
+                        public_client_registration_metadata() if is_ibkr else None
                     ),
                     callback_port=(
                         oauth_config.callback_port
-                        or (8765 if is_ibkr else None)
+                        or (IBKR_OAUTH_CALLBACK_PORT if is_ibkr else None)
                     ),
                     client_id=oauth_config.client_id,
                     client_secret=oauth_config.client_secret,
@@ -717,6 +734,7 @@ class MCPServerAdapter:
                     httpx_client_factory=lambda: httpx.AsyncClient(
                         timeout=oauth_http_timeout,
                         trust_env=True,
+                        headers=oauth_headers,
                     ),
                     allow_interactive=self._interactive_oauth,
                 )

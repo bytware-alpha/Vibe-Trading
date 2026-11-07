@@ -268,7 +268,8 @@ Add Interactive Brokers' official MCP endpoint as a read-only external server:
         "type": "oauth",
         "scopes": ["mcp.read"],
         "clientName": "Vibe-Trading",
-        "cacheDir": "~/.vibe-trading/live/ibkr/oauth"
+        "cacheDir": "~/.vibe-trading/live/ibkr/oauth",
+        "callbackPort": 8765
       },
       "enabledTools": ["*"]
     }
@@ -276,12 +277,15 @@ Add Interactive Brokers' official MCP endpoint as a read-only external server:
 }
 ```
 
-Authorize it with `vibe-trading connector authorize ibkr-live-official-mcp-readonly`. The wildcard is accepted
-only for this `mcp.read` probe. Generic `trading_account` and `trading_positions`
-calls stay disabled until IBKR publishes stable read tool names that Vibe-Trading
-can map safely; `mcp.write` requires an explicit tool allowlist and live
-order-guard handling. If IBKR issues a pre-registered OAuth client, add
-`clientId` and `clientSecret` inside `auth`.
+Authorize it with `vibe-trading connector authorize ibkr-live-official-mcp-readonly`
+on the account owner's machine (browser + `http://localhost:8765/callback`).
+The client is a public OAuth app (`token_endpoint_auth_method: none`, product
+User-Agent `Vibe-Trading/<version>`); it does not impersonate a browser. The
+wildcard is accepted only for this `mcp.read` probe. `mcp.write` requires an
+explicit tool allowlist and live order-guard handling. If IBKR issues a
+pre-registered OAuth client, add `clientId` and `clientSecret` inside `auth`.
+An HTML HTTP 403 from the public MCP URL is an access block, not an OAuth
+protocol error — do not retry it with a Mozilla User-Agent.
 
 ### Official eToro Public API MCP (discovery + dev)
 
