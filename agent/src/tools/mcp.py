@@ -47,13 +47,19 @@ from src.config.schema import (
 from src.trading.connectors.ibkr.oauth import (
     IBKR_OAUTH_ACCEPT,
     IBKR_OAUTH_CALLBACK_PORT,
+    IBKROAuthScopeError,
     apply_honest_ibkr_client_headers,
+    assert_ibkr_authorization_url_is_readonly,
+    assert_ibkr_readonly_remote_tool,
     authorization_preflight_accepted,
     honest_user_agent,
     is_ibkr_mcp_host,
     normalize_ibkr_authorization_server,
+    parse_oauth_scope_tokens,
+    pin_configured_ibkr_oauth_scopes,
     pinned_ibkr_oauth_metadata,
     public_client_registration_metadata,
+    require_ibkr_readonly_oauth_scopes,
 )
 
 logger = logging.getLogger(__name__)
@@ -160,7 +166,62 @@ class _IBKROAuth(_GuardedOAuth):
     client registration, a stable loopback redirect, RFC 8414 issuer alignment,
     stale-registration recovery, and HTTP 301 on the authorize pre-flight.
     Browser User-Agent impersonation and spoofed Origin headers are not applied.
+    Configured ``mcp.read`` is never widened from ``scopes_supported``.
     """
+
+    def __init__(self, *args: Any, allow_interactive: bool = True, **kwargs: Any) -> None:
+        super().__init__(*args, allow_interactive=allow_interactive, **kwargs)
+        require_ibkr_readonly_oauth_scopes(self._configured_oauth_scopes())
+
+    def _configured_oauth_scopes(self) -> list[str]:
+        """Return operator-configured IBKR scopes (never metadata defaults)."""
+        return list(parse_oauth_scope_tokens(getattr(self, "_scopes", None)))
+
+    def _pin_client_metadata_scope(self) -> None:
+        """Overwrite FastMCP/mcp scope selection with configured mcp.read-only."""
+        context = getattr(self, "context", None)
+        metadata = getattr(context, "client_metadata", None) if context is not None else None
+        if metadata is None:
+            return
+        metadata.scope = pin_configured_ibkr_oauth_scopes(
+            configured=self._configured_oauth_scopes(),
+            metadata_scope=getattr(metadata, "scope", None),
+        )
+
+    def _rewrite_registration_scope(self, request: httpx.Request) -> httpx.Request:
+        """Pin DCR JSON ``scope`` so registration cannot advertise write grants."""
+        if request.method.upper() != "POST":
+            return request
+        if not str(request.url.path).rstrip("/").endswith("register"):
+            return request
+        try:
+            payload = json.loads(request.content.decode() or "{}")
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise IBKROAuthScopeError(
+                "IBKR client registration body is not JSON; refusing to send it"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise IBKROAuthScopeError(
+                "IBKR client registration body is not an object; refusing to send it"
+            )
+        pinned = pin_configured_ibkr_oauth_scopes(
+            configured=self._configured_oauth_scopes(),
+            metadata_scope=payload.get("scope"),
+        )
+        if payload.get("scope") == pinned:
+            return request
+        payload["scope"] = pinned
+        content = json.dumps(payload).encode()
+        headers = httpx.Headers(request.headers)
+        headers["content-length"] = str(len(content))
+        headers["content-type"] = "application/json"
+        return httpx.Request(
+            request.method,
+            str(request.url),
+            headers=headers,
+            content=content,
+            extensions=request.extensions,
+        )
 
     def _select_authorization_server(self, advertised: list[str]) -> str:
         """Prefer IBKR's published issuer over the path-suffixed ``/oauth2`` alias."""
@@ -170,10 +231,12 @@ class _IBKROAuth(_GuardedOAuth):
     async def _refresh_token(self) -> httpx.Request:
         if self.context.oauth_metadata is None:
             self.context.oauth_metadata = pinned_ibkr_oauth_metadata()
+        self._pin_client_metadata_scope()
         return await super()._refresh_token()
 
     async def _initialize(self) -> None:
         await super()._initialize()
+        self._pin_client_metadata_scope()
         client_info = self.context.client_info
         registered_redirects = {
             str(uri) for uri in (getattr(client_info, "redirect_uris", None) or [])
@@ -193,6 +256,7 @@ class _IBKROAuth(_GuardedOAuth):
     async def async_auth_flow(
         self, request: httpx.Request
     ) -> AsyncGenerator[httpx.Request, httpx.Response]:
+        self._pin_client_metadata_scope()
         flow = super().async_auth_flow(request)
         response = None
         try:
@@ -201,6 +265,8 @@ class _IBKROAuth(_GuardedOAuth):
                     oauth_request = await flow.asend(response)
                 except StopAsyncIteration:
                     break
+                self._pin_client_metadata_scope()
+                oauth_request = self._rewrite_registration_scope(oauth_request)
                 if is_ibkr_mcp_host(oauth_request.url.host):
                     apply_honest_ibkr_client_headers(oauth_request)
                 response = yield oauth_request
@@ -208,6 +274,10 @@ class _IBKROAuth(_GuardedOAuth):
             await flow.aclose()
 
     async def redirect_handler(self, authorization_url: str) -> None:
+        assert_ibkr_authorization_url_is_readonly(
+            authorization_url,
+            configured=self._configured_oauth_scopes(),
+        )
         if not self._allow_interactive:
             await super().redirect_handler(authorization_url)
             return
@@ -717,8 +787,11 @@ class MCPServerAdapter:
                     if is_ibkr
                     else None
                 )
+                oauth_scopes = list(oauth_config.scopes)
+                if is_ibkr:
+                    require_ibkr_readonly_oauth_scopes(oauth_scopes)
                 auth = oauth_type(
-                    scopes=list(oauth_config.scopes) or None,
+                    scopes=oauth_scopes if (oauth_scopes or is_ibkr) else None,
                     client_name=oauth_config.client_name,
                     token_storage=_build_token_store(oauth_config.cache_dir),
                     additional_client_metadata=(
@@ -800,6 +873,9 @@ class MCPServerAdapter:
         Raises:
             Exception: Propagates non-transient or exhausted failures.
         """
+        if is_ibkr_mcp_host(urlparse(self.server_config.url).hostname):
+            assert_ibkr_readonly_remote_tool(remote_name)
+
         async def _invoke() -> CallToolResult:
             async with self._client_factory() as client:
                 return await client.call_tool(

@@ -34,10 +34,11 @@ Not established here, and not claimed:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from typing import Mapping
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from mcp.shared.auth import OAuthMetadata
@@ -50,7 +51,31 @@ IBKR_TOKEN_ENDPOINT = "https://api.ibkr.com/oauth2/api/v1/token"
 IBKR_REGISTRATION_ENDPOINT = "https://api.ibkr.com/oauth2/register"
 IBKR_OAUTH_CALLBACK_PORT = 8765
 IBKR_OAUTH_ACCEPT = "application/json"
+IBKR_READONLY_OAUTH_SCOPE = "mcp.read"
+# Write/order scopes IBKR advertises on protected-resource metadata. A
+# read-only client must never send these on registration or the authorize URL,
+# even when ``scopes_supported`` or WWW-Authenticate lists them.
+IBKR_WRITE_OAUTH_SCOPES: frozenset[str] = frozenset(
+    {
+        "mcp.write",
+        "mcp.orders.submit",
+        "mcp.orders.place",
+        "mcp.orders.cancel",
+        "mcp.orders.modify",
+    }
+)
+# Extra identity scopes the wildcard probe already permits in config.
+IBKR_READONLY_OAUTH_EXTRA_SCOPES: frozenset[str] = frozenset(
+    {"openid", "profile", "email", "account-ids"}
+)
+IBKR_READONLY_OAUTH_ALLOWED_SCOPES: frozenset[str] = frozenset(
+    {IBKR_READONLY_OAUTH_SCOPE} | IBKR_READONLY_OAUTH_EXTRA_SCOPES
+)
 _DISTRIBUTION_NAME = "vibe-trading-ai"
+
+
+class IBKROAuthScopeError(RuntimeError):
+    """Configured IBKR OAuth scopes cannot be enforced as mcp.read-only."""
 
 # Substrings that identify browser impersonation. An honest client identity
 # such as ``Vibe-Trading/0.1.19`` is required; these are not.
@@ -82,6 +107,163 @@ def honest_user_agent() -> str:
 def public_client_registration_metadata() -> dict[str, str]:
     """RFC 7591 metadata for a public (no-secret) native MCP client."""
     return {"token_endpoint_auth_method": "none"}
+
+
+def parse_oauth_scope_tokens(value: object) -> tuple[str, ...]:
+    """Split an OAuth scope list or encoded string into tokens."""
+    if value is None:
+        return ()
+    if isinstance(value, (list, tuple, set, frozenset)):
+        tokens: list[str] = []
+        for item in value:
+            tokens.extend(parse_oauth_scope_tokens(item))
+        return tuple(tokens)
+    text = str(value).replace(",", " ").replace("+", " ")
+    return tuple(token for token in text.split() if token)
+
+
+def is_ibkr_write_oauth_scope(scope: str) -> bool:
+    """Return whether ``scope`` is an IBKR write or order-submit grant."""
+    token = scope.strip().lower()
+    if token in IBKR_WRITE_OAUTH_SCOPES:
+        return True
+    return token.startswith("mcp.write") or token.startswith("mcp.orders.")
+
+
+def require_ibkr_readonly_oauth_scopes(configured: Sequence[str] | object) -> str:
+    """Return the space-separated scope string this client is allowed to request.
+
+    Metadata ``scopes_supported`` / WWW-Authenticate ``scope`` must never be
+    used as the requested set. Empty config would otherwise inherit every
+    advertised write/order scope; that is fail-closed here.
+
+    Args:
+        configured: Operator-configured OAuth scopes (list or encoded string).
+
+    Returns:
+        Space-separated read-only scopes, preserving configured order.
+
+    Raises:
+        IBKROAuthScopeError: If the configured set is empty, missing
+            ``mcp.read``, or includes a write/order scope.
+    """
+    tokens = parse_oauth_scope_tokens(configured)
+    if not tokens:
+        raise IBKROAuthScopeError(
+            "IBKR official MCP OAuth has no configured scopes; refusing to "
+            "default to authorization-server scopes_supported (which includes "
+            "mcp.write / mcp.orders.submit)"
+        )
+    unique = {token for token in tokens}
+    write = {token for token in unique if is_ibkr_write_oauth_scope(token)}
+    if write:
+        raise IBKROAuthScopeError(
+            "IBKR official MCP OAuth refuses write/order scopes "
+            f"{sorted(write)}; configured scopes must be mcp.read-only"
+        )
+    if IBKR_READONLY_OAUTH_SCOPE not in unique:
+        raise IBKROAuthScopeError(
+            "IBKR official MCP OAuth requires mcp.read and cannot enforce a "
+            "read-only grant from the configured scopes"
+        )
+    extras = unique - IBKR_READONLY_OAUTH_ALLOWED_SCOPES
+    if extras:
+        raise IBKROAuthScopeError(
+            "IBKR official MCP OAuth refuses undeclared scopes "
+            f"{sorted(extras)}; read-only grant is mcp.read only"
+        )
+    ordered: list[str] = []
+    for token in tokens:
+        if token not in ordered:
+            ordered.append(token)
+    return " ".join(ordered)
+
+
+def pin_configured_ibkr_oauth_scopes(
+    *,
+    configured: Sequence[str] | object,
+    metadata_scope: str | None,
+) -> str:
+    """Choose authorize/register scopes without widening from metadata.
+
+    Args:
+        configured: Operator-configured scopes (the only allowed request set).
+        metadata_scope: ``scopes_supported`` or WWW-Authenticate ``scope``.
+            Advertised extras are ignored; they must not be unioned in.
+
+    Returns:
+        The configured read-only scope string.
+
+    Raises:
+        IBKROAuthScopeError: If a read-only grant cannot be enforced.
+    """
+    # ``metadata_scope`` is accepted so callers pass PRM/WWW-Authenticate
+    # values explicitly, then discarded: it must never be unioned in.
+    del metadata_scope
+    return require_ibkr_readonly_oauth_scopes(configured)
+
+
+def authorization_url_scope_tokens(authorization_url: str) -> tuple[str, ...]:
+    """Return scope tokens from an OAuth authorize URL query string."""
+    query = parse_qs(urlparse(authorization_url).query)
+    raw_values = query.get("scope") or []
+    tokens: list[str] = []
+    for raw in raw_values:
+        tokens.extend(parse_oauth_scope_tokens(raw))
+    return tuple(tokens)
+
+
+def assert_ibkr_authorization_url_is_readonly(
+    authorization_url: str,
+    *,
+    configured: Sequence[str] | object,
+) -> None:
+    """Refuse to open a browser when the authorize URL is not mcp.read-only.
+
+    Args:
+        authorization_url: URL FastMCP is about to pre-flight and open.
+        configured: Operator-configured scopes that must appear unchanged.
+
+    Raises:
+        IBKROAuthScopeError: If the URL omits ``mcp.read`` or includes any
+            write/order (or other non-configured) scope.
+    """
+    expected = set(parse_oauth_scope_tokens(require_ibkr_readonly_oauth_scopes(configured)))
+    actual = set(authorization_url_scope_tokens(authorization_url))
+    extra = actual - expected
+    if extra:
+        raise IBKROAuthScopeError(
+            "Refusing to open IBKR authorize URL: scope was widened beyond "
+            f"configured mcp.read-only to include {sorted(extra)}"
+        )
+    missing = expected - actual
+    if missing:
+        raise IBKROAuthScopeError(
+            "Refusing to open IBKR authorize URL: missing required scope "
+            f"{sorted(missing)}"
+        )
+
+
+def assert_ibkr_readonly_remote_tool(remote_name: str) -> None:
+    """Refuse IBKR MCP tool calls that are not the verified read mapping.
+
+    Local ``trading_*`` exposure is not enough: a widened grant must still not
+    be able to invoke write/order tools through the MCP adapter.
+
+    Args:
+        remote_name: Remote IBKR MCP tool name.
+
+    Raises:
+        IBKROAuthScopeError: If ``remote_name`` is not a verified read tool.
+    """
+    from src.trading.connectors.ibkr.mcp import readonly_remote_tools
+
+    allowed = readonly_remote_tools()
+    if remote_name not in allowed:
+        raise IBKROAuthScopeError(
+            "IBKR official MCP is mcp.read-only; refusing remote tool "
+            f"'{remote_name}'. Allowed: {sorted(allowed)}"
+        )
 
 
 def is_ibkr_mcp_host(hostname: str | None) -> bool:

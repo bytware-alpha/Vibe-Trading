@@ -220,11 +220,20 @@ The authorize step must be able to open a browser, bind `http://localhost:8765/c
 and complete IBKR login/consent. Keep `callbackPort` at `8765` so reconnects
 reuse the same registered redirect URI.
 
+Configured `mcp.read` is **never widened** by protected-resource
+`scopes_supported` or a WWW-Authenticate `scope` list. IBKR advertises
+`mcp.write` and `mcp.orders.submit` on that metadata; this client still
+registers and opens authorize with `scope=mcp.read` only. If a read-only
+grant cannot be enforced, authorize fails closed **before** the browser
+opens. Write/order remote tools are also refused at the local MCP adapter
+(`get_account_summary` / `get_account_positions` only).
+
 The wildcard is accepted only for IBKR's `mcp.read` probe. Authorizing this
 profile confirms access to IBKR's official read scope; the connector maps the
 verified `get_account_summary` / `get_account_positions` tools into generic
-account and position reads. A config that adds `mcp.write` must pin an
-explicit tool allowlist and still passes through the live order guard.
+account and position reads. Adding `mcp.write` or `mcp.orders.submit` to the
+seed is rejected for the wildcard probe, and this OAuth client will not
+request those scopes.
 
 If IBKR issues a pre-registered OAuth client, add `clientId` and `clientSecret`
 inside `auth`.

@@ -24,6 +24,11 @@ _ACCOUNT_TAGS = {
 }
 
 
+def readonly_remote_tools() -> frozenset[str]:
+    """Return the verified IBKR official MCP read tools."""
+    return frozenset(_REMOTE_TOOL_NAMES.values())
+
+
 def remote_tool_name(operation: str) -> str | None:
     """Return the verified IBKR public MCP tool for a generic operation."""
     return _REMOTE_TOOL_NAMES.get(operation)

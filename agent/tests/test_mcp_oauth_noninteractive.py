@@ -117,7 +117,7 @@ def _oauth_provider(
             "url": url,
             "auth": {
                 "type": "oauth",
-                "scopes": ["trading.read"],
+                "scopes": ["mcp.read"] if "ibkr.com" in url else ["trading.read"],
                 "client_name": "Vibe-Trading",
                 "cache_dir": str(tmp_path / "oauth"),
                 "client_id": "client-id",
@@ -153,7 +153,9 @@ def test_noninteractive_ibkr_adapter_refuses_to_open_a_browser(tmp_path) -> None
     auth.httpx_client_factory = _ExplodingHTTPClient
 
     with pytest.raises(RuntimeError, match="connect/reconnect"):
-        asyncio.run(auth.redirect_handler("https://api.ibkr.com/oauth2/authorize?x=1"))
+        asyncio.run(
+            auth.redirect_handler("https://api.ibkr.com/oauth2/authorize?scope=mcp.read")
+        )
 
 
 def test_interactive_adapter_keeps_default_browser_flow(tmp_path, monkeypatch) -> None:

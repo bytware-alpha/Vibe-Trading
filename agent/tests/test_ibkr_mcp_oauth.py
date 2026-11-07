@@ -27,14 +27,19 @@ from src.trading.connectors.ibkr.oauth import (
     BROWSER_IMPERSONATION_MARKERS,
     IBKR_MCP_PUBLIC_URL,
     IBKR_OAUTH_CALLBACK_PORT,
+    IBKROAuthScopeError,
     apply_honest_ibkr_client_headers,
+    assert_ibkr_authorization_url_is_readonly,
+    authorization_url_scope_tokens,
     classify_unauthenticated_mcp_response,
     honest_user_agent,
     looks_like_access_block,
     normalize_ibkr_authorization_server,
+    pin_configured_ibkr_oauth_scopes,
     pinned_ibkr_oauth_metadata,
     probe_ibkr_mcp_public_unauthenticated,
     public_client_registration_metadata,
+    require_ibkr_readonly_oauth_scopes,
 )
 
 pytestmark = pytest.mark.unit
@@ -203,6 +208,7 @@ def test_ibkr_oauth_registration_is_honest_public_client(tmp_path) -> None:
             seen["client-name"] = body.get("client_name") or body.get("clientName")
             seen["redirect-uris"] = body.get("redirect_uris") or body.get("redirectUris")
             seen["grant-types"] = body.get("grant_types") or body.get("grantTypes")
+            seen["scope"] = body.get("scope")
             return httpx.Response(403, text="stop", request=request)
         if url == _FALLBACK_REGISTER_URL:
             seen["fallback-register"] = True
@@ -228,6 +234,7 @@ def test_ibkr_oauth_registration_is_honest_public_client(tmp_path) -> None:
     assert seen["redirect-uris"] == [f"http://localhost:{IBKR_OAUTH_CALLBACK_PORT}/callback"]
     assert "authorization_code" in seen["grant-types"]
     assert "refresh_token" in seen["grant-types"]
+    assert seen["scope"] == "mcp.read"
     assert _PRM_URL in requested
     assert seen.get("fetched-root-prm") is not True
     assert seen.get("poisoned-as-metadata") is not True
@@ -345,10 +352,11 @@ def test_ibkr_oauth_authorize_preflight_uses_honest_identity_and_accepts_301(
         return httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
 
     auth.httpx_client_factory = client_factory
+    authorize_url = "https://api.ibkr.com/oauth2/authorize?scope=mcp.read"
     with patch("webbrowser.open") as open_browser:
-        asyncio.run(auth.redirect_handler("https://api.ibkr.com/oauth2/authorize"))
+        asyncio.run(auth.redirect_handler(authorize_url))
 
-    open_browser.assert_called_once_with("https://api.ibkr.com/oauth2/authorize")
+    open_browser.assert_called_once_with(authorize_url)
     ua = str(seen["user-agent"])
     assert ua.startswith("Vibe-Trading/")
     assert all(marker not in ua for marker in BROWSER_IMPERSONATION_MARKERS)
@@ -374,7 +382,9 @@ def test_ibkr_oauth_authorize_preflight_does_not_retry_a_403(tmp_path) -> None:
 
     auth.httpx_client_factory = client_factory
     with pytest.raises(RuntimeError, match="403"):
-        asyncio.run(auth.redirect_handler("https://api.ibkr.com/oauth2/authorize"))
+        asyncio.run(
+            auth.redirect_handler("https://api.ibkr.com/oauth2/authorize?scope=mcp.read")
+        )
     assert hits["count"] == 1
 
 
@@ -471,3 +481,176 @@ def test_probe_does_not_follow_resource_metadata_on_401() -> None:
 
     asyncio.run(run())
     assert hits == [_MCP_URL]
+
+
+def test_configured_readonly_scopes_are_not_widened_by_metadata() -> None:
+    pinned = pin_configured_ibkr_oauth_scopes(
+        configured=["mcp.read"],
+        metadata_scope="mcp.read mcp.write mcp.orders.submit",
+    )
+    assert pinned == "mcp.read"
+    with pytest.raises(IBKROAuthScopeError, match="no configured scopes"):
+        require_ibkr_readonly_oauth_scopes([])
+    with pytest.raises(IBKROAuthScopeError, match="write/order"):
+        require_ibkr_readonly_oauth_scopes(["mcp.read", "mcp.write"])
+    with pytest.raises(IBKROAuthScopeError, match="write/order"):
+        require_ibkr_readonly_oauth_scopes(["mcp.orders.submit"])
+
+
+def test_authorize_url_with_write_scopes_is_rejected_before_browser(tmp_path) -> None:
+    auth = _ibkr_auth(tmp_path)
+    hits = {"count": 0}
+
+    def client_factory(**kwargs):
+        def handler(request: httpx.Request) -> httpx.Response:
+            hits["count"] += 1
+            return httpx.Response(301, headers={"Location": "https://api.ibkr.com/login"}, request=request)
+
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+
+    auth.httpx_client_factory = client_factory
+    widened = (
+        "https://api.ibkr.com/oauth2/authorize"
+        "?scope=mcp.read+mcp.write+mcp.orders.submit"
+    )
+    with patch("webbrowser.open") as open_browser:
+        with pytest.raises(IBKROAuthScopeError, match="widened"):
+            asyncio.run(auth.redirect_handler(widened))
+    open_browser.assert_not_called()
+    assert hits["count"] == 0
+    with pytest.raises(IBKROAuthScopeError, match="widened"):
+        assert_ibkr_authorization_url_is_readonly(widened, configured=["mcp.read"])
+
+
+def _registration_success_handler(seen: dict[str, object], *, www_authenticate: str):
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == _MCP_URL:
+            return httpx.Response(
+                401,
+                headers={"WWW-Authenticate": www_authenticate},
+                request=request,
+            )
+        if url == _PRM_URL:
+            return httpx.Response(
+                200,
+                json=_prm_document(["https://api.ibkr.com"]),
+                request=request,
+            )
+        if url == _AS_METADATA_URL:
+            return httpx.Response(200, json=_AS_METADATA, request=request)
+        if url == _REGISTER_URL:
+            body = json.loads(request.content)
+            seen["register-scope"] = body.get("scope")
+            return httpx.Response(
+                201,
+                json={
+                    "client_id": "vt-readonly-test",
+                    "token_endpoint_auth_method": "none",
+                    "redirect_uris": [f"http://localhost:{IBKR_OAUTH_CALLBACK_PORT}/callback"],
+                    "grant_types": ["authorization_code", "refresh_token"],
+                    "response_types": ["code"],
+                    "scope": body.get("scope"),
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    return handler
+
+
+def _authorize_url_from_flow(auth, handler) -> str:
+    original = auth.redirect_handler
+
+    async def capture_and_stop(authorization_url: str) -> None:
+        await original(authorization_url)
+        raise RuntimeError("stop-before-callback")
+
+    auth.context.redirect_handler = capture_and_stop
+
+    def client_factory(**kwargs):
+        def preflight(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                301,
+                headers={"Location": "https://api.ibkr.com/login"},
+                request=request,
+            )
+
+        return httpx.AsyncClient(transport=httpx.MockTransport(preflight), **kwargs)
+
+    auth.httpx_client_factory = client_factory
+    with patch("webbrowser.open") as open_browser:
+        with pytest.raises(RuntimeError, match="stop-before-callback"):
+            _run_registration(auth, handler)
+        open_browser.assert_called_once()
+        return str(open_browser.call_args[0][0])
+
+
+def test_authorize_url_stays_mcp_read_when_prm_advertises_write_and_orders(
+    tmp_path,
+) -> None:
+    auth = _ibkr_auth(tmp_path)
+    seen: dict[str, object] = {}
+    handler = _registration_success_handler(
+        seen,
+        www_authenticate=f'Bearer resource_metadata="{_PRM_URL}"',
+    )
+    url = _authorize_url_from_flow(auth, handler)
+    assert seen["register-scope"] == "mcp.read"
+    assert set(authorization_url_scope_tokens(url)) == {"mcp.read"}
+    assert_ibkr_authorization_url_is_readonly(url, configured=["mcp.read"])
+    lowered = url.lower()
+    assert "mcp.write" not in lowered
+    assert "mcp.orders" not in lowered
+
+
+def test_authorize_url_stays_mcp_read_when_www_authenticate_lists_write_scopes(
+    tmp_path,
+) -> None:
+    auth = _ibkr_auth(tmp_path)
+    seen: dict[str, object] = {}
+    handler = _registration_success_handler(
+        seen,
+        www_authenticate=(
+            "Bearer "
+            'scope="mcp.read mcp.write mcp.orders.submit", '
+            f'resource_metadata="{_PRM_URL}"'
+        ),
+    )
+    url = _authorize_url_from_flow(auth, handler)
+    assert seen["register-scope"] == "mcp.read"
+    assert set(authorization_url_scope_tokens(url)) == {"mcp.read"}
+    assert_ibkr_authorization_url_is_readonly(url, configured=["mcp.read"])
+
+
+def test_ibkr_adapter_refuses_write_tool_calls_without_touching_the_client(
+    tmp_path,
+) -> None:
+    cfg = MCPServerConfig.model_validate(
+        {
+            "type": "streamableHttp",
+            "url": _MCP_URL,
+            "auth": {
+                "type": "oauth",
+                "scopes": ["mcp.read"],
+                "cacheDir": str(tmp_path),
+            },
+            "enabledTools": ["*"],
+        }
+    )
+
+    class _ForbiddenClient:
+        async def __aenter__(self):
+            raise AssertionError("write tools must not reach the IBKR MCP client")
+
+        async def __aexit__(self, *args):
+            return None
+
+    adapter = MCPServerAdapter("ibkr", cfg, client_factory=_ForbiddenClient)
+    payload = adapter.call_tool("place_order", {"symbol": "AAPL"})
+    assert payload["status"] == "error"
+    assert payload["error_type"] == "IBKROAuthScopeError"
+    assert "place_order" in payload["error"]
+    allowed = adapter.call_tool("get_account_summary", {})
+    assert allowed["status"] == "error"
+    assert allowed["error_type"] == "AssertionError"

@@ -216,6 +216,25 @@ def test_ibkr_rejects_wildcard_when_write_scope_is_requested() -> None:
         )
 
 
+def test_ibkr_rejects_wildcard_when_orders_submit_scope_is_requested() -> None:
+    with pytest.raises(ValidationError, match="wildcard"):
+        AgentConfig.model_validate(
+            {
+                "mcpServers": {
+                    "ibkr": {
+                        "type": "streamableHttp",
+                        "url": "https://api.ibkr.com/v1/api/mcp-public",
+                        "auth": {
+                            "type": "oauth",
+                            "scopes": ["mcp.read", "mcp.orders.submit"],
+                        },
+                        "enabledTools": ["*"],
+                    }
+                }
+            }
+        )
+
+
 def test_ibkr_rejects_wildcard_without_read_scope() -> None:
     with pytest.raises(ValidationError, match="wildcard"):
         AgentConfig.model_validate(
@@ -309,7 +328,9 @@ def test_ibkr_oauth_accepts_authorization_redirect(tmp_path) -> None:
 
     auth.httpx_client_factory = client_factory
     with patch("webbrowser.open") as open_browser:
-        asyncio.run(auth.redirect_handler("https://api.ibkr.com/oauth2/authorize"))
+        asyncio.run(
+            auth.redirect_handler("https://api.ibkr.com/oauth2/authorize?scope=mcp.read")
+        )
 
     open_browser.assert_called_once()
 

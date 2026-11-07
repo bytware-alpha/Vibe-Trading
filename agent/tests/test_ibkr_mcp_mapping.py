@@ -6,6 +6,7 @@ import pytest
 
 from src.trading.connectors.ibkr.mcp import (
     normalize_result,
+    readonly_remote_tools,
     remote_arguments,
     remote_tool_name,
 )
@@ -17,6 +18,10 @@ def test_ibkr_remote_tools_map_only_verified_reads() -> None:
     assert remote_tool_name("account") == "get_account_summary"
     assert remote_tool_name("positions") == "get_account_positions"
     assert remote_tool_name("orders") is None
+    assert remote_tool_name("place_order") is None
+    assert readonly_remote_tools() == frozenset(
+        {"get_account_summary", "get_account_positions"}
+    )
     assert remote_arguments("account", {"account_number": "ignored"}) == {}
 
 

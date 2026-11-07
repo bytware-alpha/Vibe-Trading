@@ -45,13 +45,22 @@ python -m pip install --upgrade pip
 # 1) lockfile dependencies (hashed). 2) this wheel, no PyPI override of the app.
 python -m pip install --require-hashes -r constraints.txt
 python -m pip install --no-deps --no-index \
-  "./vibe_trading_ai-0.1.19-py3-none-any.whl"
+  "./vibe_trading_ai-0.1.19.post1-py3-none-any.whl"
+```
+
+If a previous honest wheel (`0.1.19`, hash `e94693c4…`) is already in this
+venv, upgrade in place (no need to reinstall the hashed lock):
+
+```bash
+python -m pip install --force-reinstall --no-deps --no-index \
+  "./vibe_trading_ai-0.1.19.post1-py3-none-any.whl"
 ```
 
 Confirm the patched client, not PyPI 0.1.19:
 
 ```bash
 python -c "from src.trading.connectors.ibkr.oauth import honest_user_agent; print(honest_user_agent())"
+# expect: Vibe-Trading/0.1.19.post1
 python -c "from src.tools import mcp as m; assert 'Mozilla/5.0' not in open(m.__file__).read()"
 command -v vibe-trading
 command -v vibe-trading-mcp
@@ -71,7 +80,11 @@ python -c "from src.config.schema import format_ibkr_mcp_server_seed_json; print
   > "$HOME/.vibe-trading/agent.json"
 ```
 
-The seed requests **`mcp.read` only**. It does not include `mcp.write` or a client secret.
+The seed requests **`mcp.read` only**. It does not include `mcp.write`,
+`mcp.orders.submit`, or a client secret. IBKR metadata that advertises those
+write/order scopes is ignored; the authorize URL is checked before a browser
+opens, and local MCP calls other than `get_account_summary` /
+`get_account_positions` are refused.
 
 Do **not** run `vibe-trading connector configure` for this profile. That command writes local TWS/Gateway host/port only. Official MCP is configured exclusively via `~/.vibe-trading/agent.json`.
 

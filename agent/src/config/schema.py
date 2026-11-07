@@ -43,7 +43,7 @@ LIVE_BROKER_READONLY_WILDCARD_ALLOWED_EXTRA_SCOPES: dict[str, frozenset[str]] = 
     "ibkr": frozenset({"openid", "profile", "email", "account-ids"}),
 }
 LIVE_BROKER_WRITE_SCOPES: dict[str, frozenset[str]] = {
-    "ibkr": frozenset({"mcp.write"}),
+    "ibkr": frozenset({"mcp.write", "mcp.orders.submit"}),
 }
 ROBINHOOD_AGENT_CONFIG_PATH = "~/.vibe-trading/agent.json"
 LIVE_BROKER_WILDCARD_ALLOWLIST_ERROR = (
