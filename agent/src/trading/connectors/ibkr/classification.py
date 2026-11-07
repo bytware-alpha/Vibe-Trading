@@ -1,26 +1,33 @@
 """Curated IBKR MCP tool classification overrides.
 
-IBKR's official MCP tool catalog is discovered only after OAuth, so this map is
-intentionally sparse. READ tools are expected to come from MCP annotations under
-the read-only ``mcp.read`` scope. State-changing names listed here are pinned
-WRITE when they appear, and anything not annotated read-only remains UNKNOWN
-and therefore fail-closed by the live registry.
+The official catalog is vendored from a live ``tools/list``. Names IBKR
+annotates as mutating, plus the excluded "read-only" order helpers, are pinned
+WRITE so annotations cannot un-gate them. Unknown names still fail closed.
 """
 
 from __future__ import annotations
 
 from src.live.classification import ToolClass
+from src.trading.connectors.ibkr.official_mcp_catalog import (
+    EXCLUDED_READONLY_REMOTE_TOOLS,
+    mutating_remote_tools,
+)
 
-#: Sparse IBKR write catalog. Unknown names still fail closed.
+_LEGACY_WRITE_ALIASES = (
+    "place_order",
+    "placeOrder",
+    "submitOrder",
+    "cancelOrder",
+    "modifyOrder",
+    "replace_order",
+    "replaceOrder",
+)
+
 IBKR_TOOL_CLASS: dict[str, ToolClass] = {
-    "place_order": ToolClass.WRITE,
-    "placeOrder": ToolClass.WRITE,
-    "submit_order": ToolClass.WRITE,
-    "submitOrder": ToolClass.WRITE,
-    "cancel_order": ToolClass.WRITE,
-    "cancelOrder": ToolClass.WRITE,
-    "modify_order": ToolClass.WRITE,
-    "modifyOrder": ToolClass.WRITE,
-    "replace_order": ToolClass.WRITE,
-    "replaceOrder": ToolClass.WRITE,
+    name: ToolClass.WRITE
+    for name in (
+        set(mutating_remote_tools())
+        | set(EXCLUDED_READONLY_REMOTE_TOOLS)
+        | set(_LEGACY_WRITE_ALIASES)
+    )
 }

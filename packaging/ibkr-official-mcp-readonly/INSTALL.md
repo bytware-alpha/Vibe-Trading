@@ -45,7 +45,7 @@ python -m pip install --upgrade pip
 # 1) lockfile dependencies (hashed). 2) this wheel, no PyPI override of the app.
 python -m pip install --require-hashes -r constraints.txt
 python -m pip install --no-deps --no-index \
-  "./vibe_trading_ai-0.1.19.post2-py3-none-any.whl"
+  "./vibe_trading_ai-0.1.19.post3-py3-none-any.whl"
 ```
 
 If a previous honest wheel (`0.1.19` or `0.1.19.post1`) is already in this
@@ -53,14 +53,14 @@ venv, upgrade in place (no need to reinstall the hashed lock):
 
 ```bash
 python -m pip install --force-reinstall --no-deps --no-index \
-  "./vibe_trading_ai-0.1.19.post2-py3-none-any.whl"
+  "./vibe_trading_ai-0.1.19.post3-py3-none-any.whl"
 ```
 
 Confirm the patched client, not PyPI 0.1.19:
 
 ```bash
 python -c "from src.trading.connectors.ibkr.oauth import honest_user_agent; print(honest_user_agent())"
-# expect: Vibe-Trading/0.1.19.post2
+# expect: Vibe-Trading/0.1.19.post3
 python -c "from src.tools import mcp as m; assert 'Mozilla/5.0' not in open(m.__file__).read()"
 command -v vibe-trading
 command -v vibe-trading-mcp
@@ -83,8 +83,10 @@ python -c "from src.config.schema import format_ibkr_mcp_server_seed_json; print
 The seed requests **`mcp.read` only**. It does not include `mcp.write`,
 `mcp.orders.submit`, or a client secret. IBKR metadata that advertises those
 write/order scopes is ignored; the authorize URL is checked before a browser
-opens, and local MCP calls other than `get_account_summary` /
-`get_account_positions` are refused.
+opens, and local MCP write/order tool names stay refused. Annotated
+account and market-data reads are allowlisted fail-closed from the official
+`tools/list`; `preview_order`, `preview_screener`, and
+`get_combo_identifier` stay blocked.
 
 Do **not** run `vibe-trading connector configure` for this profile. That command writes local TWS/Gateway host/port only. Official MCP is configured exclusively via `~/.vibe-trading/agent.json`.
 
@@ -144,6 +146,10 @@ After a successful grant:
 vibe-trading connector check ibkr-live-official-mcp-readonly
 vibe-trading connector account ibkr-live-official-mcp-readonly
 vibe-trading connector positions ibkr-live-official-mcp-readonly
+vibe-trading connector inventory --list
+vibe-trading connector inventory ibkr-live-official-mcp-readonly
+vibe-trading connector inventory ibkr-live-official-mcp-readonly \
+  --tool get_account_trades --args '{"period":"DAYS_7"}'
 ```
 
 ## Expose local tools to Grok Bot / other MCP clients
@@ -166,7 +172,8 @@ Put the venv `bin` on `command`, or set `command` to `vibe-trading-mcp` with `PA
 Then, in the MCP client:
 
 1. `trading_select_connection` with `ibkr-live-official-mcp-readonly`
-2. `trading_check` / `trading_account` / `trading_positions`
+2. `trading_check` / `trading_account` / `trading_positions` / `trading_inventory`
+3. `trading_read` with an allowlisted tool name for any remaining official read
 
 Order tools stay off this MCP server. Do not add `mcp.write`.
 

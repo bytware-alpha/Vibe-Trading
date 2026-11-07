@@ -1,0 +1,4786 @@
+[
+ {
+  "name": "create_alert",
+  "title": "Create Alert",
+  "description": "Creates an alert with a single condition on an instrument's price, volume, percent change, fee rate, or shortable shares \u2014 or on the caller's account margin cushion or daily P&L.\nReturns the new alert's id.\nPlatform limitation: Alerts created via this tool are currently only visible and manageable in IBKR Desktop.\nThey will not appear in IBKR Mobile, TWS, or Client Portal.\nAlways tell the user this before creating an alert, so they aren't surprised when it doesn't show up outside Desktop.\nIf no email is provided, the user is notified only in IBKR Desktop when the alert triggers and receives no notification otherwise (no push, no SMS, no other email).\nBefore calling this tool without an email parameter, confirm with the user that they intend to rely on in-app-only notification, or ask if they would like to supply an email.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "symbol": {
+     "type": "string",
+     "description": "Display name for the alert, typically the symbol (e.g. \"AAPL\"). Cosmetic only \u2014 does not affect evaluation."
+    },
+    "contract_id": {
+     "type": "integer",
+     "format": "int64",
+     "description": "Contract identifier from search_contracts (underlying_contract_id). Not restricted to a specific security type. Pass as a JSON number, unquoted. Required unless condition_type is MARGIN_CUSHION or DAILY_PNL."
+    },
+    "exchange": {
+     "type": "string",
+     "description": "Exchange on which the alert condition is evaluated.\nPass SMART, or any exchange the contract trades on (from search_contracts).\nNot used when condition_type is MARGIN_CUSHION or DAILY_PNL.\n"
+    },
+    "condition_type": {
+     "type": "string",
+     "enum": [
+      "DOUBLE_BID_ASK",
+      "LAST",
+      "DOUBLE_LAST",
+      "BID_ASK",
+      "LAST_OR_BID_ASK",
+      "MID_POINT",
+      "PERCENT_CHANGE",
+      "VOLUME",
+      "SHORTABLE_SHARES",
+      "FEE_RATE",
+      "MARGIN_CUSHION",
+      "DAILY_PNL"
+     ],
+     "description": "Which market value \u2014 or account metric \u2014 the condition tracks.\nSupported condition types (values for the 'condition_type' input field):\n - LAST: Last trade price.\n - BID_ASK: Bid/ask price.\n - DOUBLE_BID_ASK: Average of the bid and ask price (double bid/ask).\n - DOUBLE_LAST: Double last price.\n - LAST_OR_BID_ASK: Either the last trade price or the bid/ask price, whichever crosses first.\n - MID_POINT: Midpoint between the current bid and ask.\n - VOLUME: Today's total trading volume.\n - PERCENT_CHANGE: Percent change from the prior session close.\n - SHORTABLE_SHARES: Number of shares available to short.\n - FEE_RATE: Short borrow fee rate.\n - MARGIN_CUSHION: The caller's current account margin cushion. Account-level \u2014 does not use contract_id/exchange.\n - DAILY_PNL: The caller's current account daily P&L. Account-level \u2014 does not use contract_id/exchange.\nUnits of `value`: for LAST, BID_ASK, DOUBLE_BID_ASK, DOUBLE_LAST, LAST_OR_BID_ASK, and MID_POINT, value is a raw price (e.g. 200 for $200).\nFor VOLUME, a share count.\nFor SHORTABLE_SHARES, a share count.\nFor PERCENT_CHANGE and FEE_RATE, a percentage rate (e.g. 5 for 5%).\nFor MARGIN_CUSHION and DAILY_PNL, value must be a percentage \u2014 there is no dollar-amount option for these condition types.\nIf the user gives a threshold in dollars (e.g. \"alert me if I'm down $50 today\" or \"alert me if my margin cushion falls below $50\"), do not convert or pass it through as-is.\nTell the user that MARGIN_CUSHION and DAILY_PNL alerts only support percentage thresholds, and ask them to restate the threshold as a percentage.\n"
+    },
+    "operator": {
+     "type": "string",
+     "enum": [
+      "GTE",
+      "LTE"
+     ],
+     "description": "Comparison operator applied to value.\n - GTE: fires when the tracked value becomes >= value (e.g. \"alert me when AAPL goes above $200\" is GTE with value 200).\n - LTE: fires when the tracked value becomes <= value.\n"
+    },
+    "value": {
+     "type": "number",
+     "format": "double",
+     "description": "Trigger value. Pass as a JSON number, unquoted."
+    },
+    "active_hours": {
+     "type": "string",
+     "enum": [
+      "REGULAR",
+      "EXTENDED",
+      "OVERNIGHT",
+      "ALL"
+     ],
+     "description": "Active hours. Possible options: REGULAR, EXTENDED, OVERNIGHT, ALL"
+    },
+    "tif": {
+     "type": "string",
+     "enum": [
+      "UNTIL_TRIGGERED",
+      "UNTIL_DATE",
+      "UNTIL_DELETED"
+     ],
+     "description": "How long the alert stays active. UNTIL_TRIGGERED (default), UNTIL_DATE (requires expiry_date), or UNTIL_DELETED."
+    },
+    "expiry_date": {
+     "type": "string",
+     "description": "Date the alert expires, as a date-only ISO-8601 string (e.g. \"2023-05-27\") \u2014 no time component and no timezone. Required when tif is UNTIL_DATE."
+    },
+    "email": {
+     "type": "string",
+     "description": "Email address to notify when the alert triggers.Strongly recommended \u2014 without this, notification is limited to IBKR Desktop only, with no other alerting mechanism (no push, no SMS, no email)"
+    },
+    "email_note": {
+     "type": "string",
+     "description": "Note prepended to the alert email body."
+    }
+   },
+   "required": [
+    "symbol",
+    "condition_type",
+    "operator",
+    "value"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Create Alert",
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": false,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "delete_alert",
+  "title": "Delete Alert",
+  "description": "Permanently deletes one or more alerts. This action is irreversible.\nConfirm with the user before calling.\nCall get_alerts first to find the ids of the alerts to delete.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "ids": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Alert identifiers to delete, from get_alerts."
+    }
+   },
+   "required": [
+    "ids"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "ids": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Delete Alert",
+   "readOnlyHint": false,
+   "destructiveHint": true,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_alert",
+  "title": "Get Alert",
+  "description": "Returns the full detail of one alert: id, name, status, expiry_date, tif, email, email_note, and condition (contract_id, exchange, condition_type, operator, value).\nCall get_alerts first to find the id of the alert to inspect.\nCall this before update_alert \u2014 update_alert is a full-replace PUT, so you need the current settings to avoid clearing fields you didn't mean to change.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string",
+     "description": "Alert identifier, from get_alerts."
+    }
+   },
+   "required": [
+    "id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "active_hours": {
+     "type": "string",
+     "enum": [
+      "REGULAR",
+      "EXTENDED",
+      "OVERNIGHT",
+      "ALL"
+     ]
+    },
+    "condition": {
+     "type": "object",
+     "properties": {
+      "condition_type": {
+       "type": "string"
+      },
+      "contract_id": {
+       "type": "integer",
+       "format": "int64"
+      },
+      "exchange": {
+       "type": "string"
+      },
+      "operator": {
+       "type": "string"
+      },
+      "value": {
+       "type": "number",
+       "format": "double"
+      }
+     }
+    },
+    "email": {
+     "type": "string"
+    },
+    "email_note": {
+     "type": "string"
+    },
+    "expiry_date": {
+     "type": "string"
+    },
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "status": {
+     "type": "string"
+    },
+    "tif": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Alert",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_alerts",
+  "title": "Get Alerts",
+  "description": "Returns a summary of the user's alerts.\nStatus is ACTIVE or PAUSED (set via set_alert_status)\nDeleted alerts no longer appear in results.\nCall get_alert for the full detail of a specific alert.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {},
+   "required": []
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "alerts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "condition": {
+        "type": "object",
+        "properties": {
+         "condition_type": {
+          "type": "string"
+         },
+         "contract_id": {
+          "type": "integer",
+          "format": "int64"
+         },
+         "exchange": {
+          "type": "string"
+         },
+         "operator": {
+          "type": "string"
+         },
+         "value": {
+          "type": "number",
+          "format": "double"
+         }
+        }
+       },
+       "id": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       },
+       "status": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Alerts",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "set_alert_status",
+  "title": "Set Alert Status",
+  "description": "Pauses or resumes one or more alerts without deleting them.\nCall get_alerts first to find the ids of the alerts to update.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "ids": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Alert identifiers, from get_alerts."
+    },
+    "action": {
+     "type": "string",
+     "enum": [
+      "PAUSE",
+      "RESUME"
+     ],
+     "description": "PAUSE to deactivate, RESUME to reactivate."
+    }
+   },
+   "required": [
+    "ids",
+    "action"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "ids": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "status": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Set Alert Status",
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "update_alert",
+  "title": "Update Alert",
+  "description": " Replaces an existing alert's settings in full.\n   condition_type, operator, symbol, id and value are required on every call;    contract_id is required unless condition_type is MARGIN_CUSHION or DAILY_PNL; the  remaining fields (tif, expiry_date, exchange, email, email_note) are optional.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string",
+     "description": "Alert identifier, from get_alerts."
+    },
+    "symbol": {
+     "type": "string",
+     "description": "Display name for the alert, typically the symbol (e.g. \"AAPL\"). Cosmetic only \u2014 does not affect evaluation."
+    },
+    "contract_id": {
+     "type": "integer",
+     "format": "int64",
+     "description": "Contract identifier from search_contracts (underlying_contract_id). Not restricted to a specific security type. Pass as a JSON number, unquoted. Required unless condition_type is MARGIN_CUSHION or DAILY_PNL."
+    },
+    "exchange": {
+     "type": "string",
+     "description": "Exchange on which the alert condition is evaluated.\nPass SMART, or any exchange the contract trades on (from search_contracts).\nNot used when condition_type is MARGIN_CUSHION or DAILY_PNL.\n"
+    },
+    "condition_type": {
+     "type": "string",
+     "enum": [
+      "DOUBLE_BID_ASK",
+      "LAST",
+      "DOUBLE_LAST",
+      "BID_ASK",
+      "LAST_OR_BID_ASK",
+      "MID_POINT",
+      "PERCENT_CHANGE",
+      "VOLUME",
+      "SHORTABLE_SHARES",
+      "FEE_RATE",
+      "MARGIN_CUSHION",
+      "DAILY_PNL"
+     ],
+     "description": "Which market value \u2014 or account metric \u2014 the condition tracks.\nSupported condition types (values for the 'condition_type' input field):\n - LAST: Last trade price.\n - BID_ASK: Bid/ask price.\n - DOUBLE_BID_ASK: Average of the bid and ask price (double bid/ask).\n - DOUBLE_LAST: Double last price.\n - LAST_OR_BID_ASK: Either the last trade price or the bid/ask price, whichever crosses first.\n - MID_POINT: Midpoint between the current bid and ask.\n - VOLUME: Today's total trading volume.\n - PERCENT_CHANGE: Percent change from the prior session close.\n - SHORTABLE_SHARES: Number of shares available to short.\n - FEE_RATE: Short borrow fee rate.\n - MARGIN_CUSHION: The caller's current account margin cushion. Account-level \u2014 does not use contract_id/exchange.\n - DAILY_PNL: The caller's current account daily P&L. Account-level \u2014 does not use contract_id/exchange.\nUnits of `value`: for LAST, BID_ASK, DOUBLE_BID_ASK, DOUBLE_LAST, LAST_OR_BID_ASK, and MID_POINT, value is a raw price (e.g. 200 for $200).\nFor VOLUME, a share count.\nFor SHORTABLE_SHARES, a share count.\nFor PERCENT_CHANGE and FEE_RATE, a percentage rate (e.g. 5 for 5%).\nFor MARGIN_CUSHION and DAILY_PNL, value must be a percentage \u2014 there is no dollar-amount option for these condition types.\nIf the user gives a threshold in dollars (e.g. \"alert me if I'm down $50 today\" or \"alert me if my margin cushion falls below $50\"), do not convert or pass it through as-is.\nTell the user that MARGIN_CUSHION and DAILY_PNL alerts only support percentage thresholds, and ask them to restate the threshold as a percentage.\n"
+    },
+    "operator": {
+     "type": "string",
+     "enum": [
+      "GTE",
+      "LTE"
+     ],
+     "description": "Comparison operator applied to value.\n - GTE: fires when the tracked value becomes >= value (e.g. \"alert me when AAPL goes above $200\" is GTE with value 200).\n - LTE: fires when the tracked value becomes <= value.\n"
+    },
+    "value": {
+     "type": "number",
+     "format": "double",
+     "description": "Trigger value. Pass as a JSON number, unquoted."
+    },
+    "active_hours": {
+     "type": "string",
+     "enum": [
+      "REGULAR",
+      "EXTENDED",
+      "OVERNIGHT",
+      "ALL"
+     ],
+     "description": "Active hours. Possible options: REGULAR, EXTENDED, OVERNIGHT, ALL"
+    },
+    "tif": {
+     "type": "string",
+     "enum": [
+      "UNTIL_TRIGGERED",
+      "UNTIL_DATE",
+      "UNTIL_DELETED"
+     ],
+     "description": "How long the alert stays active. UNTIL_TRIGGERED (default), UNTIL_DATE (requires expiry_date), or UNTIL_DELETED."
+    },
+    "expiry_date": {
+     "type": "string",
+     "description": "Date the alert expires, as a date-only ISO-8601 string (e.g. \"2023-05-27\") \u2014 no time component and no timezone. Required when tif is UNTIL_DATE."
+    },
+    "email": {
+     "type": "string",
+     "description": "Email address to notify when the alert triggers and the user is not logged in."
+    },
+    "email_note": {
+     "type": "string",
+     "description": "Note prepended to the alert email body."
+    }
+   },
+   "required": [
+    "id",
+    "symbol",
+    "condition_type",
+    "operator",
+    "value"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Update Alert",
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "search_contracts",
+  "title": "Search Contracts",
+  "description": "        Search for contracts (instruments) by ticker symbol, company name, or keyword and return\n        matching instruments with their contract identifiers (contract_id), exchanges, symbols,\n        and available security-type sections. Returns the contract_id required by\n        get_company_themes and get_company_connections \u2014 call this first to resolve a contract_id\n        whenever you only have a company name or ticker.\n        Each result row includes a sections array listing the security types available for that instrument (e.g. STK, OPT, FUT).\n        When selecting a row for options: the primary selector is an EXACT match on the `symbol` field (e.g. for root \"AAPL\" select only the row where symbol == \"AAPL\", not \"AAPU\", \"AAPB\", etc.); having OPT in sections is necessary but NOT sufficient on its own, because many leveraged/income ETFs also carry OPT sections. When multiple rows with the exact symbol remain, prefer the primary listing using the `description` and `country_code` fields to disambiguate (e.g. the US primary listing rather than a foreign listing). Use the `underlying_contract_id` of the selected row for subsequent calls.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "query": {
+     "type": "string",
+     "description": "Ticker symbol, company name, or keyword to search for."
+    },
+    "language": {
+     "type": "string",
+     "enum": [
+      "ar",
+      "cs_CZ",
+      "de_DE",
+      "en_US",
+      "es_ES",
+      "et_EE",
+      "fr",
+      "he",
+      "hu_HU",
+      "it_IT",
+      "ja_JP",
+      "ko_KR",
+      "lt_LT",
+      "nl_NL",
+      "pl_PL",
+      "pt_BR",
+      "pt_PT",
+      "ru_RU",
+      "sl_SL",
+      "tr_TR",
+      "zh_CN",
+      "zh_TW"
+     ],
+     "description": "Language parameter. Supported values: ar, cs_CZ, de_DE, en_US, es_ES, et_EE, fr, he, hu_HU, it_IT, ja_JP, ko_KR, lt_LT, nl_NL, pl_PL, pt_BR, pt_PT, ru_RU, sl_SL, tr_TR, zh_CN, zh_TW. If a value is not in the list, omit the parameter entirely.\n"
+    }
+   },
+   "required": [
+    "query"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "results": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "country_code": {
+        "type": "string"
+       },
+       "description": {
+        "type": "string"
+       },
+       "exchange": {
+        "type": "string"
+       },
+       "issuer": {
+        "type": "string"
+       },
+       "sections": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "security_type": {
+           "type": "string"
+          }
+         }
+        }
+       },
+       "symbol": {
+        "type": "string"
+       },
+       "underlying_contract_id": {
+        "type": "integer",
+        "format": "int64"
+       }
+      }
+     }
+    },
+    "totals": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "count": {
+        "type": "integer",
+        "format": "int32"
+       },
+       "security_type": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Search Contracts",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_combo_identifier",
+  "title": "Get Combo Identifier",
+  "description": "Creates a combo contract identifier from EQUITY OPTION (OPT) legs only.\n\nOnly OPT\u2013OPT combos are supported. Every leg must be a standard\nequity/index option (security type OPT) from an OPT option chain. Futures\noptions (FOP), futures (FUT), stocks (STK), and any mixed-type combination are\nNOT supported and will fail when passed to create_order_instruction. Do NOT\ncall this tool with FOP legs. If the user wants a futures-options spread, tell\nthem multi-leg FOP combos aren't supported and offer to place each leg as a\nseparate single-leg FOP order via create_order_instruction instead.\n\nUse this before create_order_instruction when placing a spread or multi-leg\noptions strategy.\nEach leg requires a `contract_id_ex` (pass call_contract_id_ex or put_contract_id_ex from\nget_option_data verbatim) and a `size` (positive integer for BUY legs, negative for\nSELL legs).\nReturns a `contract_id_ex` string that identifies the combo \u2014 pass it directly to\ncreate_order_instruction as contract_id_ex.\nThe response also includes a `description` (human-readable strategy summary) and\n`strategy_name` (e.g. \"Bull\", \"Combo\").\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "legs": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "contract_id_ex": {
+        "type": "string"
+       },
+       "size": {
+        "type": "integer",
+        "format": "int32"
+       }
+      }
+     },
+     "description": "List of option legs. Each leg has:\n  contract_id_ex \u2014 full contract identifier, pass call_contract_id_ex or put_contract_id_ex\n                   from get_option_data verbatim (e.g. \"832609990@SMART\").\n                   Each leg's contract_id_ex must come from an OPT (equity option) chain returned\n                   by get_option_data. FOP (futures option) contract ids are not valid here and\n                   will fail downstream.\n  size           \u2014 positive for BUY, negative for SELL (e.g. 1 or -1)\nPass size as a JSON number, unquoted \u2014 e.g. 1 or -1, not \"1\".\n"
+    }
+   },
+   "required": [
+    "legs"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contract_id_ex": {
+     "type": "string"
+    },
+    "description": {
+     "type": "string"
+    },
+    "strategy_name": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Combo Identifier",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_option_data",
+  "title": "Get Option Data",
+  "description": "Returns the option chain for one expiration: a row per strike with `strike`, `call_contract_id_ex`, `call_contract_id`, `call_description`, `put_contract_id_ex`, `put_contract_id`, and `put_description`. The `*_description` strings carry option contract details such as expiration, strike and futures options include the contract multiplier in parentheses (e.g. '(50)' for ES, '(20)' for NQ). Use these when presenting a contract to the user. The response also contains a top-level `currency` field (e.g. \"USD\") and a top-level `exchange` field (e.g. \"SMART\") for the contracts in the chain.\nWorks for both equity options and futures options \u2014 the security type is inherited from the get_option_parameters call that produced the `expiration_id`.\nThis tool returns contract structure only \u2014 it does NOT return prices, implied volatility, open interest, or volume.\nTo obtain those, call get_price_snapshot using the numeric call_contract_id or put_contract_id together with the response's top-level exchange field.\nBefore choosing a range, fetch the underlying's spot price via get_price_snapshot and center min_strike/max_strike around it. Use a range wide enough to include at least 5 strikes on each side of the spot price in a single call.\nOmitting all strike bounds on a liquid name can return hundreds of rows \u2014 always bound the range unless the user explicitly wants the full chain.\n`expiration_id` must be a value taken verbatim from expirations[].id returned by get_option_parameters \u2014 never construct it.\ncall_contract_id_ex and put_contract_id_ex are the full contract identifiers (e.g. \"832609990@SMART\" for equity/index options, or \"@CME\" suffix for futures options). Pass these verbatim to create_order_instruction (as contract_id_ex) for single-leg OPT or FOP orders under REVIEW_AND_APPROVE flow. For AUTONOMOUS live-order tools, only single-leg OPT ids from an OPT option chain are supported; never use FOP ids or combo/spread ids for submit_order, modify_order, preview_order, or get_order_rules. Only OPT (equity option) ids may be passed to get_combo_identifier \u2014 FOP ids are not valid combo legs. Use the numeric call_contract_id and put_contract_id together with the top-level exchange for get_price_snapshot / get_price_history (with security_type=\"OPT\" or \"FOP\").\nNote: each row's `strike` is returned as a STRING (e.g. \"292.5\") even though min_strike/max_strike inputs are numbers \u2014 cast `strike` to a number before performing numeric comparisons or arithmetic.\ncall_contract_id_ex/put_contract_id_ex and expiration IDs are internal identifiers used for chaining tool calls. Never display them to the user. Present results using symbol, expiry date, strike and exchange.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "expiration_id": {
+     "type": "string",
+     "description": "Expiration identifier from get_option_parameters (expirations[].id).\nPass the value verbatim \u2014 do not construct it.\n"
+    },
+    "min_strike": {
+     "type": "number",
+     "format": "double",
+     "description": "Optional lower bound on strike price.\nSupply to limit response size (e.g. min_strike=185.0).\nPass as a JSON number, unquoted.\n"
+    },
+    "max_strike": {
+     "type": "number",
+     "format": "double",
+     "description": "Optional upper bound on strike price.\nSupply to limit response size (e.g. max_strike=195.0).\nPass as a JSON number, unquoted.\n"
+    }
+   },
+   "required": [
+    "expiration_id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contracts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "call_contract_id": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "call_contract_id_ex": {
+        "type": "string"
+       },
+       "call_description": {
+        "type": "string"
+       },
+       "put_contract_id": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "put_contract_id_ex": {
+        "type": "string"
+       },
+       "put_description": {
+        "type": "string"
+       },
+       "strike": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "currency": {
+     "type": "string"
+    },
+    "exchange": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Option Data",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_option_parameters",
+  "title": "Get Option Parameters",
+  "description": "Returns available option expirations and the exchange list for an underlying.\nThe response includes an `exchanges` array of valid option exchanges and `current_exchange` (the preferred/default exchange).\nEach expiration has: `id` (pass to get_option_data), `date` (YYYYMMDD), `regular` (true = standard monthly, false = weekly or daily/zero-days-to-expiration), and `trading_class` (present on every expiration row).\n`current_expiration` is the id of the preferred (first regular) expiration.\nFor equity options (option_sec_type=\"OPT\", default): call search_contracts and use the `underlying_contract_id` of the row whose symbol exactly matches the root and whose sections include OPT.\nFor future options (option_sec_type=\"FOP\"): call search_contracts and use the `underlying_contract_id` of the row whose symbol exactly matches the root and whose sections include FOP.\nCall this before get_option_data to resolve an expiration id.\nDuplicate-date handling: never disambiguate expirations by `date` alone \u2014 always key on `id` which is unique.\nA single `date` can carry multiple `trading_class` values that are DISTINCT contracts.\nAlways prefer expiration without `trading_class` or ask user to specify one. This occurs for both equity options (e.g. 'TSLA' and '2TSLA', 'NVDA' and '2NVDA') and futures options, where a date carries a quarterly class (e.g. 'ES', 'NQ') alongside weekly classes (e.g. 'EW3', 'QN3').\nContract IDs and expiration IDs are internal identifiers used for chaining tool calls.\nNever display them to the user.\nPresent results using expiry date and exchange.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "underlying_contract_id": {
+     "type": "integer",
+     "format": "int64",
+     "description": "Contract id of the underlying.\nFor equity options: call search_contracts and use the `underlying_contract_id` of the row whose symbol exactly matches the root and whose sections include OPT.\nFor future options: call search_contracts and use the `underlying_contract_id` of the row whose symbol exactly matches the root and whose sections include FOP.\nPass as a JSON number, unquoted \u2014 e.g. 265598.\n"
+    },
+    "option_exchange": {
+     "type": "string",
+     "description": "Limit results to a specific option exchange.\nWhen not specified - default exchange will be picked and provided in response.\nAdditionally, `exchanges` array returned provides all availabe option exchanges.\n"
+    },
+    "option_sec_type": {
+     "type": "string",
+     "enum": [
+      "OPT",
+      "FOP"
+     ],
+     "description": "Security type of the options. Must be one of: \"OPT\" (standard equity/index options, default) or \"FOP\" (futures options).\n"
+    }
+   },
+   "required": [
+    "underlying_contract_id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "current_exchange": {
+     "type": "string"
+    },
+    "current_expiration": {
+     "type": "string"
+    },
+    "exchanges": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "expirations": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "date": {
+        "type": "string"
+       },
+       "id": {
+        "type": "string"
+       },
+       "regular": {
+        "type": "boolean"
+       },
+       "trading_class": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Option Parameters",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "search_futures",
+  "title": "Search Futures",
+  "description": "Returns the futures term structure (the full expiry ladder) for a given underlying instrument.\nThe response is an object with a contracts array; each element has contract_id_ex, contract_id (numeric), exchange, contract_month (YYYYMM), last_trading_date (YYYYMMDD), and symbol.\nUse contract_id_ex verbatim for create_order_instruction under REVIEW_AND_APPROVE flow only. AUTONOMOUS live-order tools support STK and single-leg OPT only; never pass futures contract ids to submit_order, modify_order, preview_order, or get_order_rules. Futures contract ids are not valid get_combo_identifier legs.\nEach contract also includes a numeric contract_id field and a separate exchange field \u2014 pass those directly to get_price_snapshot / get_price_history.\nThe `symbol` field is identical for every expiry rather than a per-contract code; it cannot be used to distinguish contracts and must never be displayed to the user. Identify and present an expiry using `contract_month` / `last_trading_date`.\nResults are NOT returned in expiry order \u2014 sort by contract_month ascending yourself; the earliest non-expired entry is the front-month contract. This earliest entry can be within days of its `last_trading_date` and about to roll; when the user wants the actively-traded contract, the next expiry may be more appropriate.\nTo get underlying_contract_id, call search_contracts with the root symbol (optionally security_type=FUT), then take the underlying_contract_id field from the row whose symbol exactly matches the root and whose sections include FUT.\nOnly active contracts are returned unless include_expired=true.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "underlying_contract_id": {
+     "type": "integer",
+     "format": "int64",
+     "description": "Contract id of the underlying instrument whose futures you want, obtained from search_contracts (use the underlying_contract_id field of the matching row, not a per-expiry futures contract id).\nPick the row whose symbol exactly matches the root and whose sections include FUT.\nPass as a JSON number, unquoted \u2014 e.g. 530965695.\n"
+    },
+    "representative_only": {
+     "type": "boolean",
+     "description": "Defaults to true: returns only the single most representative (typically the standard, most-liquid) contract per expiry.\nSet to false to return all listed contracts per expiry \u2014 use false when you need every variant or the complete raw ladder. For futures that list a single contract per expiry (e.g. equity-index futures such as ES and NQ), false returns the same ladder as the default.\nPass as a JSON boolean (true/false), not the string \"true\"/\"false\".\n"
+    },
+    "include_expired": {
+     "type": "boolean",
+     "description": "Defaults to false (active, non-expired contracts only).\nSet true to also include expired contracts, e.g. for historical/backtest work.\nPass as a JSON boolean (true/false), not the string \"true\"/\"false\".\n"
+    }
+   },
+   "required": [
+    "underlying_contract_id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contracts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "contract_id": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "contract_id_ex": {
+        "type": "string"
+       },
+       "contract_month": {
+        "type": "string"
+       },
+       "exchange": {
+        "type": "string"
+       },
+       "last_trading_date": {
+        "type": "string"
+       },
+       "symbol": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Search Futures",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_earnings_insight",
+  "title": "Get Earnings Insight",
+  "description": "Retrieve a full earnings preview or recap using an id returned by\nsearch_earnings_insights. Never construct or guess an insight ID.\nIncludes earnings estimates/actuals, KPIs, themes, impacted companies and historical\nearnings reactions. Preview may include analyst price targets and bull/base/bear outlook;\nrecap may include guidance, peer context, risk updates and source citations.\nSections depend on report type and availability; missing fields are not zero values.\nPrice scenario low/high/median values are fractional returns (0.05 means 5%), and index\nis the trading-day offset from earnings. Historical reactions are not forecasts.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string",
+     "description": "Insight ID returned verbatim by search_earnings_insights."
+    },
+    "lang": {
+     "type": "string",
+     "description": "Optional language tag, e.g. en or zh-CN. Falls back to the original if unavailable."
+    }
+   },
+   "required": [
+    "id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "$defs": {
+    "ScenarioDto": {
+     "type": "object",
+     "properties": {
+      "data": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "high": {
+          "type": "number"
+         },
+         "index": {
+          "type": "integer",
+          "format": "int32"
+         },
+         "low": {
+          "type": "number"
+         },
+         "median": {
+          "type": "number"
+         }
+        }
+       }
+      },
+      "episodes": {
+       "type": "integer",
+       "format": "int32"
+      }
+     }
+    },
+    "ThemeDto": {
+     "type": "object",
+     "properties": {
+      "description": {
+       "type": "string"
+      },
+      "id": {
+       "type": "string"
+      },
+      "name": {
+       "type": "string"
+      },
+      "rating": {
+       "type": "string"
+      },
+      "relationship": {
+       "type": "string"
+      },
+      "type": {
+       "type": "string"
+      }
+     }
+    }
+   },
+   "type": "object",
+   "properties": {
+    "beats_scenario": {
+     "$ref": "#/$defs/ScenarioDto"
+    },
+    "citations": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "title": {
+        "type": "string"
+       },
+       "url": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "contract_id": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "created_at": {
+     "type": "string"
+    },
+    "earnings": {
+     "type": "object",
+     "properties": {
+      "actual_eps": {
+       "type": "number"
+      },
+      "actual_eps_yoy": {
+       "type": "number"
+      },
+      "actual_revenue": {
+       "type": "number"
+      },
+      "actual_revenue_yoy": {
+       "type": "number"
+      },
+      "estimated_eps": {
+       "type": "number"
+      },
+      "estimated_eps_yoy": {
+       "type": "number"
+      },
+      "estimated_revenue": {
+       "type": "number"
+      },
+      "estimated_revenue_yoy": {
+       "type": "number"
+      },
+      "fiscal_period": {
+       "type": "string"
+      },
+      "fiscal_year": {
+       "type": "string"
+      },
+      "reporting_date": {
+       "type": "string"
+      },
+      "surprise_eps": {
+       "type": "number"
+      },
+      "surprise_eps_yoy": {
+       "type": "number"
+      },
+      "surprise_revenue": {
+       "type": "number"
+      },
+      "surprise_revenue_yoy": {
+       "type": "number"
+      }
+     }
+    },
+    "guidance_update": {
+     "type": "string"
+    },
+    "id": {
+     "type": "string"
+    },
+    "impacted_companies": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "company_relationship": {
+        "type": "string"
+       },
+       "contract_id": {
+        "type": "integer",
+        "format": "int32"
+       },
+       "exchange": {
+        "type": "string"
+       },
+       "impact_description": {
+        "type": "string"
+       },
+       "isin": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       },
+       "rating": {
+        "type": "string"
+       },
+       "ticker": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "investment_outlook": {
+     "type": "object",
+     "properties": {
+      "base_case": {
+       "type": "string"
+      },
+      "bear_case": {
+       "type": "string"
+      },
+      "bull_case": {
+       "type": "string"
+      }
+     }
+    },
+    "isin": {
+     "type": "string"
+    },
+    "key_items_to_watch": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "key_metrics": {
+     "type": "string"
+    },
+    "kpis": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "description": {
+        "type": "string"
+       },
+       "rating": {
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       },
+       "value": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "misses_scenario": {
+     "$ref": "#/$defs/ScenarioDto"
+    },
+    "other_themes": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ThemeDto"
+     }
+    },
+    "peer_comparison_sector_context": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "price_scenario": {
+     "$ref": "#/$defs/ScenarioDto"
+    },
+    "price_targets": {
+     "type": "object",
+     "properties": {
+      "avg": {
+       "type": "number"
+      },
+      "high": {
+       "type": "number"
+      },
+      "low": {
+       "type": "number"
+      }
+     }
+    },
+    "reporting_date": {
+     "type": "string"
+    },
+    "risk_assessment_update": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "seasonality": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "sentiment_expectations": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "themes": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ThemeDto"
+     }
+    },
+    "ticker": {
+     "type": "string"
+    },
+    "title": {
+     "type": "string"
+    },
+    "type": {
+     "type": "string",
+     "enum": [
+      "preview",
+      "recap"
+     ]
+    }
+   },
+   "required": [
+    "id",
+    "type"
+   ]
+  },
+  "annotations": {
+   "title": "Get Earnings Insight",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "search_earnings_insights",
+  "title": "Search Earnings Insights",
+  "description": "Find earnings previews (before reporting) and recaps (after reporting) for\none or more companies. Returns summaries and insight IDs, not full report bodies.\nResolve names or tickers with search_contracts first, or use contract IDs from positions.\nPass a returned id verbatim to get_earnings_insight to retrieve the full report.\nResults are ordered by reporting date, newest first; recap precedes preview on ties.\nThe page size applies across all companies, not per company. Defaults: size=10, offset=0.\nTo scan all matches, increment offset by size until a short or empty page is returned.\nDate bounds filter reporting dates: start is inclusive, end is exclusive.\nAn empty result means no matching available insights, not that no earnings are scheduled.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contract_ids": {
+     "type": "array",
+     "items": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "description": "Nonempty list of positive company contract IDs from search_contracts or account positions. Pass JSON numbers, e.g. [4815747, 9939]."
+    },
+    "type": {
+     "type": "string",
+     "enum": [
+      "preview",
+      "recap"
+     ],
+     "description": "Filter to preview or recap; omit to include both."
+    },
+    "start": {
+     "type": "string",
+     "description": "Inclusive reporting-date lower bound in UTC, e.g. 2026-08-01T00:00:00Z."
+    },
+    "end": {
+     "type": "string",
+     "description": "Exclusive reporting-date upper bound in UTC, e.g. 2026-09-01T00:00:00Z."
+    },
+    "size": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Positive maximum results across all companies. Defaults to 10."
+    },
+    "offset": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Nonnegative starting result index. Defaults to 0; increment by size to paginate."
+    },
+    "lang": {
+     "type": "string",
+     "description": "Optional language tag, e.g. en or zh-CN. Falls back to the original if unavailable."
+    }
+   },
+   "required": [
+    "contract_ids"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "insights": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "contract_id": {
+        "type": "integer",
+        "format": "int32"
+       },
+       "created_at": {
+        "type": "string"
+       },
+       "id": {
+        "type": "string"
+       },
+       "isin": {
+        "type": "string"
+       },
+       "reporting_date": {
+        "type": "string"
+       },
+       "ticker": {
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "type": "string",
+        "enum": [
+         "preview",
+         "recap"
+        ]
+       }
+      },
+      "required": [
+       "id",
+       "type"
+      ]
+     }
+    }
+   },
+   "required": [
+    "insights"
+   ]
+  },
+  "annotations": {
+   "title": "Search Earnings Insights",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "provide_customer_feedback",
+  "title": "Provide Customer Feedback",
+  "description": "Submits feature requests and customer feedback.\nCall this tool when\n(1) the user wants brokerage functionality not yet offered by IBKR tools e.g. portfolio rebalance, funding and position transfers, dividends, screeners, and alike.\n(2) you identify the user's sentiment towards or issues with IBKR's tools.\nAlways show the user the exact feedback_text you intend to submit and get their confirmation before calling.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "feedback_text": {
+     "type": "string",
+     "description": "Text of the customer feedback to submit"
+    }
+   },
+   "required": [
+    "feedback_text"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "submission_result": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Provide Customer Feedback",
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": false,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_flow_type",
+  "title": "Get Flow Type",
+  "description": "Returns this session's flow type: AUTONOMOUS or REVIEW_AND_APPROVE. Flow type is constant\nfor the session \u2014 call this once per session and reuse the cached result; it will\nnot change between calls.\nRESULT:\n- AUTONOMOUS: live-order placement is available only for STK (stocks) and\nsingle-leg OPT (equity/index options). FUT, FOP, combos/spreads, and all other\nsecurity types cannot be placed through the live-order tools. See submit_order for\nthe full sequence.\n- REVIEW_AND_APPROVE: submit_order, preview_order, get_order_rules,\nget_order_status, answer_order_question, modify_order, and cancel_order are\nunavailable; use create_order_instruction, delete_order_instruction, and\nget_account_orders instead.\nRULES: get_order_instructions and get_account_orders are not flow-restricted and\nwork under either flow type. Calling a flow-restricted tool under the wrong flow\ntype returns an error naming the correct tool for the current flow.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {},
+   "required": []
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "flow_type": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Flow Type",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_company_connections",
+  "title": "Get Company Connections",
+  "description": "Return a company's competitors, products, and geographic exposure (countries and regions of operation).\nAlso includes sectors/trends but with supporting evidence explaining each connection.\nUse when the user asks 'who are Pepsi's competitors', 'what does Tesla sell', 'where does Shell operate', or wants a full business overview.\nRequires the company's contract_id \u2014 resolve with search_contracts first if you only have a name or ticker.\nRelationship to get_company_themes: that tool is the lightweight choice when you only need sectors/trends + ranked peers.\nUse get_company_connections for the broader profile (products/geography/competitors) or when you want evidence explaining WHY a connection exists.\nTo restrict to sectors/trends only, set link_types=['COMPANY_THEME'].\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contract_id": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Contract ID of the company, from search_contracts or get_theme_details. Pass as a JSON number, unquoted \u2014 e.g. 265598."
+    },
+    "link_types": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "company_theme",
+       "company_product",
+       "company_country",
+       "company_region",
+       "company_competitor",
+       "theme_company",
+       "fund_theme",
+       "theme_fund"
+      ]
+     },
+     "description": "Which connection types to return; omit for all. Use ['company_theme'] for themes,\n['company_product'] for products, ['company_country']/['company_region'] for\ngeography, ['company_competitor'] for competitors. The company_* edges are anchored\non the company you pass; the inverse edges (theme_company, fund_theme, theme_fund)\ntraverse from a theme or fund and are generally not used when the anchor is a company.\n"
+    },
+    "include": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "link_info",
+       "company_info"
+      ]
+     },
+     "description": "'LINK_INFO' adds a description and supporting evidence per connection (use when the\nuser wants to know WHY a connection exists). 'COMPANY_INFO' adds the company's own\nprofile. Omit both for a compact list of bare connections.\n"
+    },
+    "max": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Maximum number of connections to return per group. Small to stay focused, larger to\nenumerate more fully.\nPass as a JSON number, unquoted \u2014 e.g. 10.\n"
+    }
+   },
+   "required": [
+    "contract_id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contract_id": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "description": {
+     "type": "string"
+    },
+    "exchange": {
+     "type": "string"
+    },
+    "groups": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "fallback": {
+        "type": "boolean"
+       },
+       "links": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "contract_id": {
+           "type": "integer",
+           "format": "int32"
+          },
+          "description": {
+           "type": "string"
+          },
+          "evidence": {
+           "type": "string"
+          },
+          "exchange": {
+           "type": "string"
+          },
+          "key": {
+           "type": "string"
+          },
+          "link_type": {
+           "type": "string"
+          },
+          "name": {
+           "type": "string"
+          },
+          "rank": {
+           "type": "integer",
+           "format": "int32"
+          },
+          "symbol": {
+           "type": "string"
+          },
+          "type": {
+           "type": "string"
+          }
+         }
+        }
+       },
+       "title": {
+        "type": "string"
+       },
+       "type": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "name": {
+     "type": "string"
+    },
+    "symbol": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Company Connections",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_company_themes",
+  "title": "Get Company Themes",
+  "description": "Given a company, return the sectors, trends, and industries it belongs to, and for each one the top peer companies ranked by relevance.\nUse for questions like 'what sectors is NVIDIA in?', 'what trends is Tesla part of?', or 'who are Apple's closest peers?' Requires the company's contract_id.\nIf you only have a name or ticker, call search_contracts first to resolve it.\nChoose this over get_company_connections when you only need sectors/trends + ranked peers.\nIf you need the company's products, countries, regions, broader competitor view, or evidence text explaining each link, use get_company_connections instead.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contract_id": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Contract ID of the company, from search_contracts or get_theme_details. Resolve via\nsearch_contracts if you only have a name or ticker.\nPass as a JSON number, unquoted \u2014 e.g. 265598.\n"
+    },
+    "max_themes": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Number of top themes to return for the company. Pass as a JSON number, unquoted \u2014 e.g. 5."
+    },
+    "max_companies": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Number of peer companies to return per theme, ranked by thematic relevance. Pass as a JSON number, unquoted \u2014 e.g. 5."
+    }
+   },
+   "required": [
+    "contract_id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "linked_themes": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "available_periods": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "description": {
+        "type": "string"
+       },
+       "funds": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "asset_type": {
+           "type": "string"
+          },
+          "contract_id": {
+           "type": "integer",
+           "format": "int32"
+          },
+          "exchange": {
+           "type": "string"
+          },
+          "name": {
+           "type": "string"
+          },
+          "rank_adjusted_weight": {
+           "type": "number",
+           "format": "double"
+          },
+          "symbol": {
+           "type": "string"
+          },
+          "top_holdings_for_theme": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "contract_id": {
+              "type": "integer",
+              "format": "int32"
+             },
+             "name": {
+              "type": "string"
+             },
+             "symbol": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       },
+       "key": {
+        "type": "string"
+       },
+       "linked_companies": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "asset_type": {
+           "type": "string"
+          },
+          "contract_id": {
+           "type": "integer",
+           "format": "int32"
+          },
+          "description": {
+           "type": "string"
+          },
+          "evidence": {
+           "type": "string"
+          },
+          "exchange": {
+           "type": "string"
+          },
+          "key": {
+           "type": "string"
+          },
+          "name": {
+           "type": "string"
+          },
+          "rank": {
+           "type": "integer",
+           "format": "int32"
+          },
+          "symbol": {
+           "type": "string"
+          }
+         }
+        }
+       },
+       "name": {
+        "type": "string"
+       },
+       "total_count": {
+        "type": "integer",
+        "format": "int32"
+       },
+       "total_funds_count": {
+        "type": "integer",
+        "format": "int32"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Company Themes",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_theme_details",
+  "title": "Get Theme Details",
+  "description": "Return the full profile of an investment topic: its description, the companies in it ranked by relevance (rank 1 = most central \u2014 this is relevance-ranked, NOT market-cap-weighted), and optionally ETFs/mutual funds with exposure.\nUse after search_investment_topics when the user wants to know which companies are in a sector or trend ('which companies are in AI?', 'top battery stocks', 'what ETFs cover clean energy').\nRequires a key obtained verbatim from search_investment_topics.\nEach returned company includes a contract_id that can be passed directly into get_company_themes or get_company_connections to go deeper.\nFor large topics, use offset together with the returned total_count to paginate through the full company list.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "key": {
+     "type": "string",
+     "description": "Theme key returned verbatim by search_investment_topics. Do not construct or guess \u2014 must come\nfrom a prior search_investment_topics result.\n"
+    },
+    "max": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Max companies to return, in rank order. Combine with offset to paginate. Pass as a JSON number, unquoted \u2014 e.g. 20."
+    },
+    "offset": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Starting index into the rank-ordered company list, for pagination. To page through a\nlarge theme, increment offset by max each call and stop when offset reaches the\nreturned total_count.\nPass as a JSON number, unquoted \u2014 e.g. 20.\n"
+    },
+    "max_funds": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Number of ETFs/mutual funds with exposure to include. Defaults to 0 (no funds).\nSet greater than 0 only when the user asks about funds or ETFs.\nPass as a JSON number, unquoted \u2014 e.g. 20.\n"
+    }
+   },
+   "required": [
+    "key"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "available_periods": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "description": {
+     "type": "string"
+    },
+    "funds": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "asset_type": {
+        "type": "string"
+       },
+       "contract_id": {
+        "type": "integer",
+        "format": "int32"
+       },
+       "exchange": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       },
+       "rank_adjusted_weight": {
+        "type": "number",
+        "format": "double"
+       },
+       "symbol": {
+        "type": "string"
+       },
+       "top_holdings_for_theme": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "contract_id": {
+           "type": "integer",
+           "format": "int32"
+          },
+          "name": {
+           "type": "string"
+          },
+          "symbol": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "key": {
+     "type": "string"
+    },
+    "linked_companies": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "asset_type": {
+        "type": "string"
+       },
+       "contract_id": {
+        "type": "integer",
+        "format": "int32"
+       },
+       "description": {
+        "type": "string"
+       },
+       "evidence": {
+        "type": "string"
+       },
+       "exchange": {
+        "type": "string"
+       },
+       "key": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       },
+       "rank": {
+        "type": "integer",
+        "format": "int32"
+       },
+       "symbol": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "name": {
+     "type": "string"
+    },
+    "total_count": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "total_funds_count": {
+     "type": "integer",
+     "format": "int32"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Theme Details",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "search_investment_topics",
+  "title": "Search Investment Topics",
+  "description": "Search for companies grouped by sector, industry, trend, or topic.\nUse when the user asks about an investment area ('who's in solar', 'AI stocks', 'clean energy companies', 'what's happening in quantum computing').\nReturns matching topics as {key, name} pairs.\nPass the returned key to get_theme_details for the full company list.\nQuery tips: use short, broad, singular keywords \u2014 a single root noun ('battery', not 'batteries' or 'electric vehicle batteries'; 'robot', not 'robotics companies').\nThe matcher is keyword-based and narrow, so plural or multi-word queries often return nothing.\nIf results are empty, retry with a shorter/singular form or a synonym before concluding no match exists.\nNever guess, construct, or modify a key \u2014 only pass keys returned by this tool.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "query": {
+     "type": "string",
+     "description": "Short, broad keyword for the topic or sector, ideally a single singular noun (e.g.\n'battery', 'lithium', 'quantum', 'solar'). Avoid plurals and multi-word phrases,\nwhich frequently return no matches; retry with a shorter or singular variant if empty.\n"
+    },
+    "max": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Maximum number of themes to return. Use 3-5 to surface only the closest matches;\nlarger to browse adjacent themes.\nPass as a JSON number, unquoted \u2014 e.g. 5.\n"
+    }
+   },
+   "required": [
+    "query"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "themes": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "key": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Search Investment Topics",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_price_history",
+  "title": "Get Price History",
+  "description": "Returns historical OHLCV (open/high/low/close/volume) price bars for an instrument over a specified time period.\nUse when the user asks about price trends, historical performance, or wants to compare prices across dates.\nProvide either period or step_count but never both.\nWhen called with an option contract_id from get_option_data, use security_type=\"OPT\" and pass the exchange field from that row; if no exchange is available, omit it to default to SMART.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contract_id": {
+     "type": "integer",
+     "format": "int64",
+     "description": "Contract identifier for the instrument. Pass as a JSON number, unquoted \u2014 e.g. 265598."
+    },
+    "exchange": {
+     "type": "string",
+     "description": "Contract exchange. Omit to use SMART (aggregated best execution)."
+    },
+    "security_type": {
+     "type": "string",
+     "enum": [
+      "STK",
+      "OPT",
+      "FUT",
+      "FOP",
+      "CASH",
+      "WAR",
+      "BOND",
+      "CFD",
+      "FUND",
+      "IND",
+      "CRYPTO",
+      "CMDTY",
+      "IOPT"
+     ],
+     "description": "Security type of the contract:\nSTK (stocks),\nOPT (options),\nFUT (futures),\nFOP (futures options),\nCASH (cash),\nWAR (warrants),\nBOND (bonds),\nCFD (contracts for difference),\nFUND (mutual funds),\nIND (indices),\nCRYPTO (cryptocurrency),\nCMDTY (commodities),\nIOPT (issuer options).\nCase-sensitive: use the uppercase value exactly as listed.\n"
+    },
+    "period": {
+     "type": "string",
+     "enum": [
+      "ONE_DAY",
+      "TWO_DAYS",
+      "THREE_DAYS",
+      "ONE_WEEK",
+      "TWO_WEEKS",
+      "ONE_MONTH",
+      "THREE_MONTHS",
+      "SIX_MONTHS",
+      "ONE_YEAR",
+      "TWO_YEARS",
+      "FIVE_YEARS"
+     ],
+     "description": "Time period. Required when step_count is not provided; mutually exclusive with step_count (never provide both).\nCase-sensitive: use the uppercase value exactly as listed.\n"
+    },
+    "step": {
+     "type": "string",
+     "enum": [
+      "THIRTY_SECS",
+      "ONE_MIN",
+      "TWO_MINS",
+      "FIVE_MINS",
+      "TEN_MINS",
+      "FIFTEEN_MINS",
+      "THIRTY_MINS",
+      "ONE_HOUR",
+      "TWO_HOURS",
+      "FOUR_HOURS",
+      "ONE_DAY",
+      "ONE_WEEK",
+      "ONE_MONTH"
+     ],
+     "description": "Bar size.\nCase-sensitive: use the uppercase value exactly as listed.\n"
+    },
+    "step_count": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Number of bars to return. Required when period is not provided; mutually exclusive with period (never provide both).\nPass as a JSON number, unquoted \u2014 e.g. 30.\n"
+    },
+    "outside_rth": {
+     "type": "boolean",
+     "description": "Include data outside regular trading hours (RTH). Pass as a JSON boolean (true/false), not the string \"true\"/\"false\"."
+    },
+    "include_corporate_actions": {
+     "type": "boolean",
+     "description": "When set to true, response will include corporate actions for the specified chart period. Pass as a JSON boolean (true/false), not the string \"true\"/\"false\"."
+    }
+   },
+   "required": [
+    "contract_id",
+    "security_type",
+    "step",
+    "outside_rth"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "chart_end": {
+     "type": "string"
+    },
+    "chart_start": {
+     "type": "string"
+    },
+    "chart_step": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "close": {
+     "type": "array",
+     "items": {
+      "type": "number",
+      "format": "double"
+     }
+    },
+    "corp_actions": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "announce_date": {
+        "type": "string"
+       },
+       "currency": {
+        "type": "string"
+       },
+       "date": {
+        "type": "string"
+       },
+       "payment_date": {
+        "type": "string"
+       },
+       "type": {
+        "type": "string"
+       },
+       "value": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "delayed": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "error": {
+     "type": "string"
+    },
+    "expires": {
+     "type": "string"
+    },
+    "high": {
+     "type": "array",
+     "items": {
+      "type": "number",
+      "format": "double"
+     }
+    },
+    "low": {
+     "type": "array",
+     "items": {
+      "type": "number",
+      "format": "double"
+     }
+    },
+    "open": {
+     "type": "array",
+     "items": {
+      "type": "number",
+      "format": "double"
+     }
+    },
+    "source": {
+     "type": "string"
+    },
+    "time": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "volume": {
+     "type": "array",
+     "items": {
+      "type": "number",
+      "format": "double"
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Price History",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_price_snapshot",
+  "title": "Get Price Snapshot",
+  "description": "Retrieves a real-time market data snapshot for an instrument.\nAllows requesting one or more market data fields in a single call.\nUse this to get the current price, bid/ask spread, volume, volatility, and other live market metrics.\nFor historical OHLCV price bars use get_price_history instead.\nNote on response key casing: response JSON keys use hyphens where requested field names use underscores.\nFor example, requesting `option_midpoint_iv` returns the key `option-midpoint-iv` in the response; `bid_ask` \u2192 `bid-ask`; `option_open_interest` \u2192 `option-open-interest`.\nAlways look up response values using the hyphenated form, not the underscore form used in market_data_names.\nNote: SMART routing only covers SMART-eligible instruments (US equities and equity options).\nFor futures and futures options, pass the contract's native `exchange` (from search_futures / get_option_parameters / search_contracts) or the response will be empty.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contract_id": {
+     "type": "integer",
+     "format": "int64",
+     "description": "Contract identifier for the instrument.\nPass as a JSON number, unquoted \u2014 e.g. 265598.\n"
+    },
+    "exchange": {
+     "type": "string",
+     "description": "Exchange of the instrument.\nFor SMART-eligible instruments (US stocks, ETFs, and equity options), this is optional \u2014 if omitted, SMART routing is used.\nFor instruments NOT eligible for SMART routing \u2014 notably futures (FUT) and futures options (FOP) \u2014 omitting this returns NO market data; you MUST pass the contract's native exchange (e.g. CME for ES/NQ, CBOT, NYMEX, COMEX, EUREX).\nThe correct value is the `exchange` field on the contract row returned by search_futures, get_option_data, or search_contracts \u2014 pass it verbatim.\nWhen the contract came from search_futures or is a FOP, always set this.\n"
+    },
+    "market_data_names": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "bid_ask",
+       "last",
+       "change",
+       "prior_close",
+       "plprice",
+       "dividend_yield",
+       "volume",
+       "option_volume",
+       "option_open_interest",
+       "future_open_interest",
+       "option_midpoint_iv",
+       "option_greeks",
+       "underlying_today_option_volume",
+       "underlying_avg_option_volume",
+       "misc_statistics",
+       "avg_90d_usd_volume",
+       "implied_volatility_percentile",
+       "implied_vol_underlying",
+       "implied_vol",
+       "historical_vol",
+       "year_to_date_change",
+       "bond_yield",
+       "cumulative_perf_1d",
+       "cumulative_perf_1w",
+       "cumulative_perf_1m",
+       "cumulative_perf_ytd",
+       "cumulative_perf_1y",
+       "cumulative_perf_3y",
+       "cumulative_perf_5y",
+       "total_net_assets",
+       "top_status",
+       "open",
+       "low",
+       "high",
+       "perpetual_futures_funding_rate"
+      ]
+     },
+     "description": " Optional list of market data fields to request.\n If omitted, a default set of ['last', 'bid_ask'] is used.\n Provide specific fields only when you need more than the basic quote.\n Supported market data names (values for the 'market_data_names' input field):\n  - bid_ask: Current bid and ask prices for the instrument.\n  - last: Last trade price with timestamp and halt/close status flags. Price can be null if a trade happened at the same price as the previous one (only timestamp field (ts) changes).\n  - top_status: Market data status for top subscription (REALTIME, DELAYED, FROZEN, FROZEN_DELAYED, REJECT)\n  - change: Absolute price change and percentage change from the prior session close.\n  - prior_close: Prior session closing price.\n  - plprice: Mark price (profit/loss price). Also called the as-known-as mark-price.\n  - dividend_yield: Dividend yield percentage for STK and CFD instruments. Rounded to 1 decimal place.\n  - volume: Today's total trading volume for the instrument.\n  - option_volume: Option trading volume for today for individual option contracts (OPT and FOP).\n  - option_open_interest: Option put and call open interest for individual option contracts (OPT and FOP).\n  - future_open_interest: Open interest for futures (FUT) contracts.\n  - option_midpoint_iv: Midpoint implied volatility for individual option contracts (OPT and FOP).\n  - option_greeks: Option Greeks and theoretical option price for individual option contracts (OPT and FOP).\n    Returns an object with delta, gamma, theta, vega, and option_price.\n  - underlying_today_option_volume: Total today's option put/call volume for the underlying.\n  - underlying_avg_option_volume: Average option put/call volume for the underlying.\n  - misc_statistics: Historical 13-week, 26-week, and 52-week high and low prices, plus open price 52 weeks ago.\n  - avg_90d_usd_volume: Average USD trading volume over the last 90 calendar days.\n  - implied_volatility_percentile: Implied volatility high percentile over 13-week, 26-week, and\n    52-week windows. Values are fractions (e.g. 0.94 = 94th percentile).\n  - implied_vol_underlying: Implied volatility for the underlying. Values are fractions\n  (multiply by 100 to get percentage). Usually the annual_iv is displayed to clients.\n  - implied_vol: Implied volatility for option contracts. Values are fractions.\n  - historical_vol: Historical volatility for the last 30 days. Values are fractions.\n  - year_to_date_change: Year-to-date price change from last year's close. Available for STK and indices.\n  - bond_yield: Bid yield and ask yield (yield-to-worst) for BOND instruments only.\n  - cumulative_perf_1d: 1-day cumulative performance percentage for ETFs, mutual funds, or stocks.\n  - cumulative_perf_1w: 1-week cumulative performance percentage.\n  - cumulative_perf_1m: 1-month cumulative performance percentage.\n  - cumulative_perf_ytd: Year-to-date cumulative performance percentage.\n  - cumulative_perf_1y: 1-year cumulative performance percentage.\n  - cumulative_perf_3y: 3-year cumulative performance percentage.\n  - cumulative_perf_5y: 5-year cumulative performance percentage.\n  - total_net_assets: Total net assets value for ETFs, mutual funds, or stocks.\n  - open: Today's market open price.\n  - low: Today's intraday lowest price.\n  - high: Today's intraday highest price.\n  - perpetual_futures_funding_rate: Perpetual crypto futures funding rate and next funding time.\nNotes:\n - Multiple fields can be requested in a single call.\n - Clients receive realtime or delayed prices automatically based on their market data subscription.\n - Fields that are unavailable or time out within 10 seconds are omitted from the response besides bid and ask which may return as an empty object when no quote is currently available for the instrument.\n"
+    }
+   },
+   "required": [
+    "contract_id"
+   ]
+  },
+  "annotations": {
+   "title": "Get Price Snapshot",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "create_order_instruction",
+  "title": "Create Order Instruction",
+  "description": "Creates a new instruction. An instruction is not a live order. Requires\nflow_type=REVIEW_AND_APPROVE. In AUTONOMOUS flow, use submit_order instead, which submits\na live order directly rather than a reviewable instruction.\nThe returned URL deep-links to the instruction in the IBKR platforms where a user can review and submit it. Always surface this url to the user \u2014 it is required for them to review and submit the instruction, and no other tool exposes it.\nquantity, order_type, limit_price, and time_in_force are all optional; any left\nunset can be filled in by the user when reviewing the instruction at the\ndeep-link URL before submission. Only side is strictly required beyond the\ncontract identifier.\nAfter submission, the instruction is converted into a live order.\nSupports Stocks (STK), Futures (FUT), single-leg Options (OPT), single-leg\nFutures Options (FOP), and OPT\u2013OPT option combos/spreads. Combo/spread support\nis limited to equity-option (OPT) legs only; FOP, FUT, STK, and mixed-type\ncombos are not supported.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contract_id_ex": {
+     "type": "string",
+     "description": "Full contract identifier.\nFor STK: stringify the underlying_contract_id from search_contracts (e.g. \"8314\").\nFor FUT: use contract_id_ex from search_futures verbatim (e.g. \"12345@CME\").\nFor OPT/FOP: use call_contract_id_ex or put_contract_id_ex from get_option_data verbatim (e.g. \"722271932@CBOE\").\nFor combos/spreads: use contract_id_ex from get_combo_identifier verbatim.\nOptional only when the deprecated contract_id parameter is supplied.\nAlways a JSON string, even when it looks numeric \u2014 e.g. \"8314\", never the number 8314.\n"
+    },
+    "contract_id": {
+     "type": "integer",
+     "format": "int64",
+     "description": "Deprecated \u2014 use contract_id_ex instead.\nNumeric contract identifier from search_contracts (underlying_contract_id), search_futures (contract_id), or get_option_data (call_contract_id / put_contract_id).\nAccepted as a backward-compatibility fallback; contract_id_ex takes precedence when both are supplied.\nSupply exactly one of contract_id_ex or contract_id.\nPass as a JSON number, unquoted \u2014 e.g. 530965695.\n"
+    },
+    "side": {
+     "type": "string",
+     "enum": [
+      "BUY",
+      "SELL"
+     ],
+     "description": "Side: BUY or SELL. Case-sensitive: use the uppercase value exactly as listed."
+    },
+    "quantity": {
+     "type": "number",
+     "format": "double",
+     "description": "Number of units (shares for STK; contracts for FUT, OPT, and FOP). The same concept as submit_order's size / modify_order's quantity, under yet another parameter name. Pass as a JSON number, unquoted \u2014 e.g. 15, not \"15\"."
+    },
+    "order_type": {
+     "type": "string",
+     "enum": [
+      "MARKET",
+      "LIMIT"
+     ],
+     "description": "Order type: MARKET or LIMIT. Case-sensitive: use the uppercase value exactly as listed."
+    },
+    "limit_price": {
+     "type": "number",
+     "format": "double",
+     "description": "Limit price. Required when order_type is LIMIT; ignored otherwise. Pass as a JSON number, unquoted \u2014 e.g. 198.5."
+    },
+    "time_in_force": {
+     "type": "string",
+     "enum": [
+      "DAY",
+      "GTC",
+      "OVT",
+      "OND",
+      "OPG"
+     ],
+     "description": "Specifies how long the order remains active before it expires.\nAllowed values:\nDAY (Day Order - valid only for the current trading day, cancelled if not filled by session end),\nGTC (Good Till Cancelled - remains active until fully executed or explicitly cancelled),\nOVT (Overnight - executed during the overnight trading session after regular market close),\nOND (Overnight Next Day - placed for the overnight session, carries over into the next trading day if unfilled),\nOPG (At The Opening - executed at the market opening auction on the next trading day).\nThere is no outside_rth flag here \u2014 OVT/OND already encode the extended-session\nbehavior directly.\nIf not provided, the system default time-in-force policy is applied.\nCase-sensitive: use the uppercase value exactly as listed.\n"
+    }
+   },
+   "required": [
+    "side"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "url": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Create Order Instruction",
+   "readOnlyHint": false,
+   "destructiveHint": true,
+   "idempotentHint": false,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "delete_order_instruction",
+  "title": "Delete Order Instruction",
+  "description": "Deletes an existing instruction by its ID. Requires flow_type=REVIEW_AND_APPROVE. In AUTONOMOUS flow, use cancel_order instead to cancel a live order.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string",
+     "description": "ID of the order instruction to delete. Pass as a JSON string, quoted \u2014 e.g. \"124\", not the number 124. Copy verbatim from the id field returned by get_order_instructions."
+    }
+   },
+   "required": [
+    "id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object"
+  },
+  "annotations": {
+   "title": "Delete Order Instruction",
+   "readOnlyHint": false,
+   "destructiveHint": true,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_order_instructions",
+  "title": "Get Order Instructions",
+  "description": "Returns all saved instructions for the account. Not flow-restricted \u2014 usable\nunder either flow_type.\nEach instruction includes an ID, description, contract identifier (contract_id_ex), trade direction (BUY/SELL), quantity, order type (MARKET/LIMIT), limit price, time in force, creation time (ISO 8601), and expiration (ISO 8601, if present).\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {},
+   "required": []
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "instructions": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "contract_id": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "contract_id_ex": {
+        "type": "string"
+       },
+       "creation_time": {
+        "type": "string"
+       },
+       "description": {
+        "type": "string"
+       },
+       "expiration": {
+        "type": "string"
+       },
+       "id": {
+        "type": "string"
+       },
+       "is_new": {
+        "type": "boolean"
+       },
+       "limit_price": {
+        "type": "number",
+        "format": "double"
+       },
+       "order_type": {
+        "type": "string"
+       },
+       "quantity": {
+        "type": "number",
+        "format": "double"
+       },
+       "side": {
+        "type": "string"
+       },
+       "symbol": {
+        "type": "string"
+       },
+       "tif": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Order Instructions",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "answer_order_question",
+  "title": "Answer Order Question",
+  "description": "Sends an answer to a broker confirmation raised by submit_order, modify_order, or\ncancel_order. A confirming answer on the final question releases that action to the\nmarket (placing, modifying, or cancelling the order); a declining answer voids it.\nOnly confirm placement or modification of STK or single-leg OPT orders; decline\nquestions for unsupported security types. Cancellation may still be confirmed.\nRequires flow_type=AUTONOMOUS. REVIEW_AND_APPROVE flow never produces a pending_question,\nsince instructions are not live orders \u2014 there is nothing to answer under REVIEW_AND_APPROVE\nflow.\nPRECONDITIONS: a non-null pending_question in a submit_order, modify_order,\ncancel_order, or prior answer_order_question result. See submit_order for the full\nsequence.\nRESULT: same shape as submit_order. An answer may produce another pending_question\ninstead of an outcome; handle it the same way. The action is settled only when a\nresult has no pending_question: until then no order exists on the market (for\nsubmit_order), or the modification or cancellation has not been applied (for\nmodify_order and cancel_order). That result carries the order_id and order_status\nof the outcome.\nRULES:\n- correlation_id must be the value from the result that produced this\npending_question \u2014 copy it verbatim; it is echoed back in this result so it can be\ncarried into the next round.\nPENDING QUESTIONS:\n- The broker may return several pending_questions in sequence. Evaluate each question\nseparately and call answer_order_question with an answer value copied verbatim from\npending_question.answers and this result's correlation_id, until a result has no\npending_question.\n- If the user has explicitly given you permission to answer broker questions on their\nbehalf, you may answer automatically within that permission and the user's stated\ninstructions and limits. Do not ask the user again for questions covered by that\npermission. Permission to place, modify, or cancel an order, or flow_type=AUTONOMOUS,\ndoes not by itself grant permission to answer broker questions.\n- Without that permission, or if a question is outside its scope, the appropriate\nanswer is unclear, or answering would conflict with the user's instructions or limits,\npresent the question to the user and obtain their answer before calling\nanswer_order_question. Honor any withdrawal of permission for subsequent questions.\n- Do not blindly confirm every question or choose an answer just because it is marked\ndefault. User permission does not override the supported security types or other tool\nrules.\n- No order exists on the market until the final question is answered with a confirming\nvalue and a result returns an order_id. Modification or cancellation is not applied\nuntil its final question is answered with a confirming value.\nON ERROR: the question expires about 2 minutes after it was raised, cancelling the\nunderlying action; answering an expired question returns an error saying so \u2014 then\ncall get_order_status (or get_account_orders with show_completed=true if there is\nno order_id yet) to confirm the outcome rather than retrying, and report it. For any\nother error or timeout, do not retry; escalate to the user.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "question_id": {
+     "type": "string",
+     "description": "question_id being answered. Globally unique across all of the user's orders \u2014 you don't need order_id to know which order a question belongs to."
+    },
+    "value": {
+     "type": "string",
+     "description": "Answer value, copied verbatim from an entry in pending_question.answers."
+    },
+    "correlation_id": {
+     "type": "string",
+     "description": "The correlation_id from the submit_order, modify_order, cancel_order, or answer_order_question result that produced this pending_question. Copy it verbatim and unchanged; it correlates this answer with the request it belongs to."
+    }
+   },
+   "required": [
+    "question_id",
+    "value",
+    "correlation_id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "correlation_id": {
+     "type": "string"
+    },
+    "description": {
+     "type": "string"
+    },
+    "errors": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "text": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "filled_quantity": {
+     "type": "string"
+    },
+    "order_id": {
+     "type": "string"
+    },
+    "order_status": {
+     "type": "string"
+    },
+    "pending_question": {
+     "type": "object",
+     "properties": {
+      "answers": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "default": {
+          "type": "boolean"
+         },
+         "tag": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "message": {
+       "type": "string"
+      },
+      "question_id": {
+       "type": "string"
+      },
+      "suppress_id": {
+       "type": "string"
+      }
+     }
+    },
+    "reject_reason": {
+     "type": "string"
+    },
+    "remaining_quantity": {
+     "type": "string"
+    },
+    "total_quantity": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Answer Order Question",
+   "readOnlyHint": false,
+   "destructiveHint": true,
+   "idempotentHint": false,
+   "openWorldHint": true
+  }
+ },
+ {
+  "name": "cancel_order",
+  "title": "Cancel Order",
+  "description": "Requests cancellation of a LIVE working order identified by order_id, with real\nmoney; fills that happen before the cancellation is processed are irreversible.\nAgentic Trading only places STK and single-leg OPT orders; cancellation of an\nexisting order is still permitted to reduce exposure.\nRequires flow_type=AUTONOMOUS. In REVIEW_AND_APPROVE flow, use delete_order_instruction\ninstead to remove an instruction before it is submitted.\nPRECONDITIONS: the order's order_id. See submit_order for the full sequence.\nRESULT: same shape as submit_order. Cancellation is a request, not a guarantee \u2014\nthe exchange may fill the order before the cancellation is processed. Do not assume\norder_status is CANCELLED; report the actual outcome, including filled_quantity. The\ncancellation is not applied until any pending_question is answered with a confirming\nvalue.\nRULES: cancel_order is idempotent \u2014 cancelling an order that is already cancelled\nreturns the same outcome rather than an error \u2014 and it can be called on an order\nwith an outstanding modify_order question, voiding that question.\nPENDING QUESTIONS: if pending_question is non-null, follow the pending-question policy\nin submit_order and pass this result's correlation_id to answer_order_question.\nON ERROR: if this call returns an error or times out, do not call it again: the broker\nmay already have accepted the request. Look for the order's order_id in\nget_account_orders \u2014 pass show_completed=true, since the order may have already\ncompleted \u2014 and confirm it with get_order_status; for fill price and commission, call\nget_account_trades (symbol, side, size, trade_time). Then escalate with what you found.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "order_id": {
+     "type": "string",
+     "description": "order_id returned by submit_order, modify_order, cancel_order, answer_order_question, get_order_status, or get_account_orders."
+    }
+   },
+   "required": [
+    "order_id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "correlation_id": {
+     "type": "string"
+    },
+    "description": {
+     "type": "string"
+    },
+    "errors": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "text": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "filled_quantity": {
+     "type": "string"
+    },
+    "order_id": {
+     "type": "string"
+    },
+    "order_status": {
+     "type": "string"
+    },
+    "pending_question": {
+     "type": "object",
+     "properties": {
+      "answers": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "default": {
+          "type": "boolean"
+         },
+         "tag": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "message": {
+       "type": "string"
+      },
+      "question_id": {
+       "type": "string"
+      },
+      "suppress_id": {
+       "type": "string"
+      }
+     }
+    },
+    "reject_reason": {
+     "type": "string"
+    },
+    "remaining_quantity": {
+     "type": "string"
+    },
+    "total_quantity": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Cancel Order",
+   "readOnlyHint": false,
+   "destructiveHint": true,
+   "idempotentHint": false,
+   "openWorldHint": true
+  }
+ },
+ {
+  "name": "get_order_rules",
+  "title": "Get Order Rules",
+  "description": "Returns the order types and times in force permitted for a contract and side under\nautonomous order submission. Requires flow_type=AUTONOMOUS. REVIEW_AND_APPROVE flow has no\norder-rules tool \u2014 order type constraints are enforced when the instruction is\nreviewed and submitted.\nOnly use these rules for STK and single-leg OPT contracts. Rules returned for\nFUT, FOP, combos/spreads, or other security types do not authorize live placement\nthrough Agentic Trading.\nPRECONDITIONS: pass is_position_close when the order closes a position, and\norder_id when checking a modification of an existing order, since both change the\npermitted set. See submit_order for the full sequence.\nRESULT:\n- order_types: per-entry capability objects, not a flat allow-list. Each entry\nreports outside_rth and cash_quantity (whether cash_size may be used) for that\norder_type. A flag may be absent; treat an absent flag as false \u2014 e.g. absent\ncash_quantity means cash_size is not allowed.\n- tifs: each entry reports outside_rth and the order_types it can be combined with.\nRULES:\n- Only values present both here AND in the submit_order/modify_order order_type and\ntif enums are usable; these lists describe everything the broker supports for the\ncontract and may include values those tools do not accept.\n- Check the specific flags for the requested order_type/tif, not just presence in\nthe list.\n- If the instruction requires an order_type, tif, size kind, or price outside these\ncapabilities, do not substitute a different value: escalate to the user with\nthe mismatch and the supported alternatives from this result.\n- is_position_close: set to true only when the order reduces an existing position;\nbuying more of an instrument already held long is false.\nON ERROR: do not retry; escalate to the user.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contract_id_ex": {
+     "type": "string",
+     "description": "Full contract identifier.\nFor STK: stringify the underlying_contract_id from search_contracts (e.g. \"8314\").\nFor OPT: use call_contract_id_ex or put_contract_id_ex from an OPT option chain\nreturned by get_option_data verbatim (e.g. \"722271932@CBOE\").\nAgentic Trading orders support only STK and single-leg OPT. Do not use FUT,\nFOP, combos/spreads, or any other security type, even if its contract_id_ex\nis available from another tool.\nAlways a JSON string, even when it looks numeric \u2014 e.g. \"8314\", never the number 8314.\n"
+    },
+    "side": {
+     "type": "string",
+     "enum": [
+      "BUY",
+      "SELL"
+     ],
+     "description": "Side: BUY or SELL. Case-sensitive: use the uppercase value exactly as listed."
+    },
+    "is_position_close": {
+     "type": "boolean",
+     "description": "Set to true only when this order reduces an existing position (closing all or part of\nit). Buying more of an instrument already held long is false; pass false for any order\nthat opens or increases a position.\n"
+    },
+    "order_id": {
+     "type": "string",
+     "description": "order_id of the working order being modified, as returned by submit_order, modify_order, get_order_status, or get_account_orders; omit for a new order."
+    }
+   },
+   "required": [
+    "contract_id_ex",
+    "side"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "$defs": {
+    "LiveOrderType": {
+     "type": "string",
+     "enum": [
+      "MARKET",
+      "LIMIT",
+      "STOP",
+      "STOP_LIMIT",
+      "TRAILING_STOP",
+      "TRAILING_STOP_LIMIT",
+      "TRAILING_MIT",
+      "TRAILING_LIT",
+      "MARKETONCLOSE",
+      "LIMITONCLOSE",
+      "RELATIVE",
+      "MIDPRICE",
+      "MKT_PROTECT",
+      "STP_PROTECT",
+      "MIT",
+      "LIT",
+      "SNAPMKT",
+      "SNAPMID",
+      "SNAPPRIM",
+      "MARKET_TO_LIMIT",
+      "FIX_PEG",
+      "PEGMID",
+      "PEGMKT",
+      "PEGBEST",
+      "PEG_PRIM_VOL",
+      "PEG_MKT_VOL",
+      "PEG_SURF_VOL",
+      "PEG_MID_VOL",
+      "RELATIVE_TO_STOCK",
+      "PEG_TO_BENCH"
+     ]
+    }
+   },
+   "type": "object",
+   "properties": {
+    "order_types": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "cash_quantity": {
+        "type": "boolean"
+       },
+       "order_type": {
+        "$ref": "#/$defs/LiveOrderType"
+       },
+       "outside_rth": {
+        "type": "boolean"
+       }
+      }
+     }
+    },
+    "tifs": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "order_types": {
+        "type": "array",
+        "items": {
+         "$ref": "#/$defs/LiveOrderType"
+        }
+       },
+       "outside_rth": {
+        "type": "boolean"
+       },
+       "tif": {
+        "type": "string",
+        "enum": [
+         "DAY",
+         "GTC",
+         "OPG",
+         "IOC",
+         "FOK",
+         "GTX",
+         "GTD",
+         "AUC",
+         "NMIN",
+         "OVT",
+         "OND",
+         "DTC"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Order Rules",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_order_status",
+  "title": "Get Order Status",
+  "description": "Retrieves the current status and parameters of an order identified by order_id.\nRequires flow_type=AUTONOMOUS. In REVIEW_AND_APPROVE flow, use\nget_account_orders to check the status of an order instead.\nPRECONDITIONS: an order_id from submit_order, modify_order, cancel_order,\nanswer_order_question, or a prior get_order_status call. See submit_order for the\nfull sequence.\nRESULT:\n- order_status: one of CANCELLED, DONE_FOR_THE_DAY, EXPIRED, FILLED, NEW,\nPARTIALLY_FILLED, PENDING_CANCEL, PENDING_CANCEL_REPLACE, PENDING_NEW,\nPENDING_REPLACE, REJECTED, or REPLACED.\n- total_quantity, filled_quantity, remaining_quantity: order size, filled part, and\nunfilled part, in the instrument's units.\n- contract_id_ex, side, order_type, tif, limit_price, stop_price, outside_rth: the\norder's current parameters \u2014 use them as the baseline before calling modify_order.\nOnly modify STK or single-leg OPT orders in Agentic Trading. A status result for\nanother security type does not make that order eligible for modification.\nlimit_price and stop_price may be 0 when they do not apply to the order_type (e.g.\nMARKET); ignore them for those order types and never report them as prices.\n- No fill price or actual commission. For the final report, call\nget_account_trades, which returns each execution's price and commission; match by\nsymbol, side, size, and trade_time.\n- Outstanding questions are never reported here \u2014 only by the submit_order,\nmodify_order, cancel_order, or answer_order_question call that raised them.\nRULES:\n- DONE_FOR_THE_DAY and EXPIRED may include partial fills. Always report\nfilled_quantity and remaining_quantity.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "order_id": {
+     "type": "string",
+     "description": "order_id returned by submit_order, modify_order, cancel_order, answer_order_question, a prior get_order_status call, or get_account_orders."
+    }
+   },
+   "required": [
+    "order_id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contract_id_ex": {
+     "type": "string"
+    },
+    "description": {
+     "type": "string"
+    },
+    "filled_quantity": {
+     "type": "string"
+    },
+    "limit_price": {
+     "type": "number",
+     "format": "double"
+    },
+    "order_id": {
+     "type": "string"
+    },
+    "order_status": {
+     "type": "string"
+    },
+    "order_type": {
+     "type": "string",
+     "enum": [
+      "MARKET",
+      "LIMIT",
+      "STOP",
+      "STOP_LIMIT",
+      "TRAILING_STOP",
+      "TRAILING_STOP_LIMIT",
+      "TRAILING_MIT",
+      "TRAILING_LIT",
+      "MARKETONCLOSE",
+      "LIMITONCLOSE",
+      "RELATIVE",
+      "MIDPRICE",
+      "MKT_PROTECT",
+      "STP_PROTECT",
+      "MIT",
+      "LIT",
+      "SNAPMKT",
+      "SNAPMID",
+      "SNAPPRIM",
+      "MARKET_TO_LIMIT",
+      "FIX_PEG",
+      "PEGMID",
+      "PEGMKT",
+      "PEGBEST",
+      "PEG_PRIM_VOL",
+      "PEG_MKT_VOL",
+      "PEG_SURF_VOL",
+      "PEG_MID_VOL",
+      "RELATIVE_TO_STOCK",
+      "PEG_TO_BENCH"
+     ]
+    },
+    "outside_rth": {
+     "type": "boolean"
+    },
+    "reject_reason": {
+     "type": "string"
+    },
+    "remaining_quantity": {
+     "type": "string"
+    },
+    "side": {
+     "type": "string"
+    },
+    "stop_price": {
+     "type": "number",
+     "format": "double"
+    },
+    "tif": {
+     "type": "string",
+     "enum": [
+      "DAY",
+      "GTC",
+      "OPG",
+      "IOC",
+      "FOK",
+      "GTX",
+      "GTD",
+      "AUC",
+      "NMIN",
+      "OVT",
+      "OND",
+      "DTC"
+     ]
+    },
+    "total_quantity": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Order Status",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "modify_order",
+  "title": "Modify Order",
+  "description": "Modifies a LIVE working order identified by order_id, with real money; fills,\nincluding fills at the new parameters, are irreversible. Requires\nflow_type=AUTONOMOUS. REVIEW_AND_APPROVE flow has no order-modification tool \u2014 delete the\ninstruction with delete_order_instruction and recreate it with\ncreate_order_instruction instead.\nOnly modify STK or single-leg OPT orders. Do not modify FUT, FOP,\ncombos/spreads, or any other security type through Agentic Trading.\nReplaces the order's parameters in full, mirroring submit_order \u2014 there is no\npartial/delta update. Every field is required on every call; fields you are not\nchanging must still be passed with their current value (the baseline from\nget_order_status).\nPRECONDITIONS \u2014 the canonical sequence for every order modification, mirroring\nsubmit_order:\n(1) get_flow_type returns AUTONOMOUS.\n(2) get_order_status for the order's current contract_id_ex, side, order_type, tif,\nsize, and prices, to use as the baseline for any field you are not changing.\n(3) Call get_order_rules with contract_id_ex, side, and order_id. Check order_type,\ntif, size kind.\n(4) Call preview_order with the exact final parameters \u2014 the complete new state of\nthe order, not just the fields that changed.\n(5) Self-verify the preview: errors is absent or empty; instrument, side, size,\norder_type, tif, and prices match the user's instruction; cost, size, and position\nchange are within any limits the user stated. If any check fails, escalate to the user.\n(6) Call modify_order with byte-identical parameters, in the same turn.\n(7) Handle pending_question per PENDING QUESTIONS in submit_order.\nRESULT: same shape as submit_order. The same order_id continues to identify the\norder after modification \u2014 modify_order does not mint a new order_id. The\nmodification is not applied until any pending_question is answered with a\nconfirming value; afterwards report the new parameters.\nPENDING QUESTIONS: if pending_question is non-null, follow the pending-question policy\nin submit_order and pass this result's correlation_id to answer_order_question.\nON ERROR: if this call returns an error or times out, do not call it again: the broker\nmay already have accepted the request. Look for the order's order_id in\nget_account_orders \u2014 pass show_completed=true, since the order may have already\ncompleted \u2014 and confirm it with get_order_status; for fill price and commission, call\nget_account_trades (symbol, side, size, trade_time). Then escalate with what you found.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "order_id": {
+     "type": "string",
+     "description": "order_id returned by submit_order, modify_order, cancel_order, answer_order_question, get_order_status, or get_account_orders."
+    },
+    "contract_id_ex": {
+     "type": "string",
+     "description": "The order's current contract_id_ex, exactly as returned by get_order_status."
+    },
+    "side": {
+     "type": "string",
+     "enum": [
+      "BUY",
+      "SELL"
+     ],
+     "description": "The order's current side, exactly as returned by get_order_status \u2014 modify_order cannot change an order's side."
+    },
+    "order_type": {
+     "type": "string",
+     "enum": [
+      "MARKET",
+      "LIMIT",
+      "STOP",
+      "STOP_LIMIT"
+     ],
+     "description": "Order type.\nMARKET - executes immediately at the best available price.\nLIMIT - executes at limit_price or better.\nSTOP - becomes a market order once stop_price is reached.\nSTOP_LIMIT - becomes a limit order at limit_price once stop_price is reached.\nMust also appear in get_order_rules' order_types for this contract.\nCase-sensitive: use the uppercase value exactly as listed.\n"
+    },
+    "tif": {
+     "type": "string",
+     "enum": [
+      "DAY",
+      "OVT",
+      "OND"
+     ],
+     "description": "Time in force.\nDAY - valid only for the current trading session; cancelled if unfilled by session end.\nOVT (Overnight) - executed during the overnight trading session after regular market close.\nOND (Overnight Next Day) - placed for the overnight session, carries over into the next trading day if unfilled.\nMust also appear in get_order_rules' tifs for this contract, with order_type in that entry's order_types.\noutside_rth only applies when tif is DAY \u2014 OVT and OND already encode the extended-session behavior directly.\nCase-sensitive: use the uppercase value exactly as listed.\n"
+    },
+    "size": {
+     "type": "number",
+     "format": "double",
+     "description": "Order size in the instrument's units: shares for STK; contracts for OPT.\nIf the user says \"shares\" for an OPT order, treat that as contracts and use\nthe correct unit in reports. Must be a whole number \u2014 fractional share quantities are\nnot allowed in Agentic Trading. Decimal limit_price and stop_price are allowed. New order size \u2014 an absolute new value, not a delta and not additive to the existing size. Supply exactly one of size or cash_size."
+    },
+    "cash_size": {
+     "type": "number",
+     "format": "double",
+     "description": "New order size in cash terms, denominated in the contract's trading currency (not the\naccount's base currency) \u2014 an absolute new value, not a delta and not additive to the\nexisting cash size. Valid for STK only, and only when get_order_rules reports\ncash_quantity=true for the order_type. Supply exactly one of size or cash_size.\n"
+    },
+    "limit_price": {
+     "type": "number",
+     "format": "double",
+     "description": "Limit price. Required when order_type is LIMIT or STOP_LIMIT; ignored otherwise."
+    },
+    "stop_price": {
+     "type": "number",
+     "format": "double",
+     "description": "Stop (trigger) price. Required when order_type is STOP or STOP_LIMIT; ignored otherwise."
+    },
+    "outside_rth": {
+     "type": "boolean",
+     "description": "Allow execution outside regular trading hours during the current session. Only applies when tif is DAY \u2014 OVT and OND already specify the overnight session directly and ignore this flag."
+    },
+    "is_position_close": {
+     "type": "boolean",
+     "description": "Set to true only when this order reduces an existing position (closing all or part of\nit). Buying more of an instrument already held long is false; pass false for any order\nthat opens or increases a position.\n"
+    }
+   },
+   "required": [
+    "order_id",
+    "contract_id_ex",
+    "side",
+    "order_type",
+    "tif"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "correlation_id": {
+     "type": "string"
+    },
+    "description": {
+     "type": "string"
+    },
+    "errors": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "text": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "filled_quantity": {
+     "type": "string"
+    },
+    "order_id": {
+     "type": "string"
+    },
+    "order_status": {
+     "type": "string"
+    },
+    "pending_question": {
+     "type": "object",
+     "properties": {
+      "answers": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "default": {
+          "type": "boolean"
+         },
+         "tag": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "message": {
+       "type": "string"
+      },
+      "question_id": {
+       "type": "string"
+      },
+      "suppress_id": {
+       "type": "string"
+      }
+     }
+    },
+    "reject_reason": {
+     "type": "string"
+    },
+    "remaining_quantity": {
+     "type": "string"
+    },
+    "total_quantity": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Modify Order",
+   "readOnlyHint": false,
+   "destructiveHint": true,
+   "idempotentHint": false,
+   "openWorldHint": true
+  }
+ },
+ {
+  "name": "preview_order",
+  "title": "Preview Order",
+  "description": "Computes the estimated cost, commission, and position/equity/margin impact of an\norder without submitting it. Requires flow_type=AUTONOMOUS. REVIEW_AND_APPROVE flow has no\norder-preview tool \u2014 call create_order_instruction to create a reviewable\ninstruction instead.\nOnly preview STK and single-leg OPT orders for Agentic Trading. Do not preview\nFUT, FOP, combos/spreads, or any other security type for live placement.\nPRECONDITIONS: get_order_rules has confirmed the parameters are supported. Pass the\nexact final parameters you intend to submit. See submit_order for the full sequence\nand the self-verification step.\nRESULT:\n- amount: estimated trade value, excluding commission;\n- commission: estimated commission;\n- total: amount + commission;\n- position.current/change/after: position size in the instrument's units (shares\nor contracts).\n- funds.current/change/after: account equity before the order, the change, and\nafter. This is equity, not cash or available funds, so it does not show cash\nspent \u2014 use total for that.\n- initial_margin, maintenance_margin: current/change/after.\n- funds and margin values may carry no currency suffix; do not attach a currency\nto them in reports unless one is shown.\n- warnings: list of {suppress_id, text}. Warnings do not block submission, but\ninclude each warning's text, exactly as written, in the final report.\n- errors: list of {text}. Absent or empty means no errors. Non-empty means the\nbroker would reject the order: do not call submit_order; escalate to the user.\nRULES:\n- Verify the preview yourself (submit_order step 6), then call submit_order in the\nsame turn with byte-identical parameters.\n- If you change any parameter after previewing, preview again before submitting.\n- Preview does NOT surface the confirmation questions submit_order may raise. A\npassing preview does not mean submission needs no further answers.\nON ERROR: preview never places an order. Do not retry; escalate to the user.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contract_id_ex": {
+     "type": "string",
+     "description": "Full contract identifier.\nFor STK: stringify the underlying_contract_id from search_contracts (e.g. \"8314\").\nFor OPT: use call_contract_id_ex or put_contract_id_ex from an OPT option chain\nreturned by get_option_data verbatim (e.g. \"722271932@CBOE\").\nAgentic Trading orders support only STK and single-leg OPT. Do not use FUT,\nFOP, combos/spreads, or any other security type, even if its contract_id_ex\nis available from another tool.\nAlways a JSON string, even when it looks numeric \u2014 e.g. \"8314\", never the number 8314.\n"
+    },
+    "side": {
+     "type": "string",
+     "enum": [
+      "BUY",
+      "SELL"
+     ],
+     "description": "Side: BUY or SELL. Case-sensitive: use the uppercase value exactly as listed."
+    },
+    "order_type": {
+     "type": "string",
+     "enum": [
+      "MARKET",
+      "LIMIT",
+      "STOP",
+      "STOP_LIMIT"
+     ],
+     "description": "Order type.\nMARKET - executes immediately at the best available price.\nLIMIT - executes at limit_price or better.\nSTOP - becomes a market order once stop_price is reached.\nSTOP_LIMIT - becomes a limit order at limit_price once stop_price is reached.\nMust also appear in get_order_rules' order_types for this contract.\nCase-sensitive: use the uppercase value exactly as listed.\n"
+    },
+    "tif": {
+     "type": "string",
+     "enum": [
+      "DAY",
+      "OVT",
+      "OND"
+     ],
+     "description": "Time in force.\nDAY - valid only for the current trading session; cancelled if unfilled by session end.\nOVT (Overnight) - executed during the overnight trading session after regular market close.\nOND (Overnight Next Day) - placed for the overnight session, carries over into the next trading day if unfilled.\nMust also appear in get_order_rules' tifs for this contract, with order_type in that entry's order_types.\noutside_rth only applies when tif is DAY \u2014 OVT and OND already encode the extended-session behavior directly.\nCase-sensitive: use the uppercase value exactly as listed.\n"
+    },
+    "size": {
+     "type": "number",
+     "format": "double",
+     "description": "Order size in the instrument's units: shares for STK; contracts for OPT.\nIf the user says \"shares\" for an OPT order, treat that as contracts and use\nthe correct unit in reports. Must be a whole number \u2014 fractional share quantities are\nnot allowed in Agentic Trading. Decimal limit_price and stop_price are allowed. Supply exactly one of size or cash_size."
+    },
+    "cash_size": {
+     "type": "number",
+     "format": "double",
+     "description": "Order size in cash terms, denominated in the contract's trading currency (not the\naccount's base currency). Valid for STK only, and only when get_order_rules reports\ncash_quantity=true for the order_type. Supply exactly one of size or cash_size.\n"
+    },
+    "limit_price": {
+     "type": "number",
+     "format": "double",
+     "description": "Limit price. Required when order_type is LIMIT or STOP_LIMIT; ignored otherwise."
+    },
+    "stop_price": {
+     "type": "number",
+     "format": "double",
+     "description": "Stop (trigger) price. Required when order_type is STOP or STOP_LIMIT; ignored otherwise."
+    },
+    "outside_rth": {
+     "type": "boolean",
+     "description": "Allow execution outside regular trading hours during the current session. Only applies when tif is DAY \u2014 OVT and OND already specify the overnight session directly and ignore this flag."
+    },
+    "is_position_close": {
+     "type": "boolean",
+     "description": "Set to true only when this order reduces an existing position (closing all or part of\nit). Buying more of an instrument already held long is false; pass false for any order\nthat opens or increases a position.\n"
+    }
+   },
+   "required": [
+    "contract_id_ex",
+    "side",
+    "order_type",
+    "tif"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "$defs": {
+    "PreviewMargin": {
+     "type": "object",
+     "properties": {
+      "after": {
+       "type": "string"
+      },
+      "change": {
+       "type": "string"
+      },
+      "current": {
+       "type": "string"
+      }
+     }
+    }
+   },
+   "type": "object",
+   "properties": {
+    "amount": {
+     "type": "string"
+    },
+    "commission": {
+     "type": "string"
+    },
+    "errors": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "text": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "funds": {
+     "type": "object",
+     "properties": {
+      "after": {
+       "type": "string"
+      },
+      "change": {
+       "type": "string"
+      },
+      "current": {
+       "type": "string"
+      }
+     }
+    },
+    "initial_margin": {
+     "$ref": "#/$defs/PreviewMargin"
+    },
+    "maintenance_margin": {
+     "$ref": "#/$defs/PreviewMargin"
+    },
+    "position": {
+     "type": "object",
+     "properties": {
+      "after": {
+       "type": "string"
+      },
+      "change": {
+       "type": "string"
+      },
+      "current": {
+       "type": "string"
+      }
+     }
+    },
+    "total": {
+     "type": "string"
+    },
+    "warnings": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "suppress_id": {
+        "type": "string"
+       },
+       "text": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Preview Order",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": true
+  }
+ },
+ {
+  "name": "submit_order",
+  "title": "Submit Order",
+  "description": "Submits a LIVE order with real money in the user's account; fills are irreversible.\nRequires flow_type=AUTONOMOUS. In REVIEW_AND_APPROVE flow, use create_order_instruction\ninstead, which creates a reviewable instruction rather than a live order.\nOnly STK (stocks) and single-leg OPT (equity/index options) orders are supported\nin Agentic Trading. Do not submit FUT, FOP, combos/spreads, or any other security\ntype; if the user requests one, explain that live placement is unavailable.\nPRECONDITIONS \u2014 the canonical sequence for every order:\n(1) get_flow_type returns AUTONOMOUS.\n(2) Resolve contract_id_ex: search_contracts for STK, get_option_data for a\nsingle-leg OPT from an OPT option chain. Do not use a FOP option chain.\n(3) Call get_order_rules with contract_id_ex, side, and is_position_close. Check\norder_type, tif, size kind (size or cash_size).\n(4) Call preview_order with the exact final parameters.\n(5) Self-verify the preview: errors is absent or empty; instrument, side, size,\norder_type, tif, and prices match the user's instruction; cost, size, and position\nchange are within any limits the user stated. If any check fails, escalate to the user.\n(6) Call submit_order with byte-identical parameters, in the same turn.\n(7) Handle pending_question per PENDING QUESTIONS below.\nPENDING QUESTIONS:\n- The broker may return several pending_questions in sequence. Evaluate each question\nseparately and call answer_order_question with an answer value copied verbatim from\npending_question.answers and this result's correlation_id, until a result has no\npending_question.\n- If the user has explicitly given you permission to answer broker questions on their\nbehalf, you may answer automatically within that permission and the user's stated\ninstructions and limits. Do not ask the user again for questions covered by that\npermission. Permission to place, modify, or cancel an order, or flow_type=AUTONOMOUS,\ndoes not by itself grant permission to answer broker questions.\n- Without that permission, or if a question is outside its scope, the appropriate\nanswer is unclear, or answering would conflict with the user's instructions or limits,\npresent the question to the user and obtain their answer before calling\nanswer_order_question. Honor any withdrawal of permission for subsequent questions.\n- Do not blindly confirm every question or choose an answer just because it is marked\ndefault. User permission does not override the supported security types or other tool\nrules.\n- No order exists on the market until the final question is answered with a confirming\nvalue and a result returns an order_id. Modification or cancellation is not applied\nuntil its final question is answered with a confirming value.\nESCALATION \u2014 stop and involve the user only when:\n- preview_order returns non-empty errors;\n- get_order_rules does not support the order_type, tif, size kind, or price the\ninstruction requires (do not silently substitute a different value);\n- a pending_question requires the user's answer under the pending-question policy;\n- the preview does not match the user's instruction (instrument, side, size,\norder_type, price) or exceeds any limits the user stated;\n- an order ends REJECTED;\n- any call errors or times out (see ON ERROR).\nWhen escalating:\n- Present broker messages (pending_question.message, errors, reject_reason) with\ntheir wording exactly as written, converting markup such as <b>, <br>, <a href> to\nthe client's formatting (for example markdown), preserving all links, and dropping\nHTML entities like &nbsp;. Never paraphrase, summarize, or omit sentences.\n- If the user asks what a broker message means, do not invent an explanation. Say\nthe broker gave no further detail, and share any link in the message.\n- A pending_question expires about 2 minutes after it was raised, so\ntell the user. If it expires, the action is cancelled.\nREPORT, once a result has no pending_question:\n- instrument, side, size (with units), order_type, tif;\n- order_status, filled_quantity, remaining_quantity;\n- any preview warnings, with their text exactly as written;\n- every broker question that was answered, with its message text shown exactly\nas the broker wrote it and the answer given.\nON ERROR: if this call returns an error or times out, do not call it again: the broker\nmay already have accepted the request. Look for the order's order_id in\nget_account_orders \u2014 pass show_completed=true, since the order may have already\ncompleted \u2014 and confirm it with get_order_status; for fill price and commission, call\nget_account_trades (symbol, side, size, trade_time). Then escalate with what you found.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "contract_id_ex": {
+     "type": "string",
+     "description": "Full contract identifier.\nFor STK: stringify the underlying_contract_id from search_contracts (e.g. \"8314\").\nFor OPT: use call_contract_id_ex or put_contract_id_ex from an OPT option chain\nreturned by get_option_data verbatim (e.g. \"722271932@CBOE\").\nAgentic Trading orders support only STK and single-leg OPT. Do not use FUT,\nFOP, combos/spreads, or any other security type, even if its contract_id_ex\nis available from another tool.\nAlways a JSON string, even when it looks numeric \u2014 e.g. \"8314\", never the number 8314.\n"
+    },
+    "side": {
+     "type": "string",
+     "enum": [
+      "BUY",
+      "SELL"
+     ],
+     "description": "Side: BUY or SELL. Case-sensitive: use the uppercase value exactly as listed."
+    },
+    "order_type": {
+     "type": "string",
+     "enum": [
+      "MARKET",
+      "LIMIT",
+      "STOP",
+      "STOP_LIMIT"
+     ],
+     "description": "Order type.\nMARKET - executes immediately at the best available price.\nLIMIT - executes at limit_price or better.\nSTOP - becomes a market order once stop_price is reached.\nSTOP_LIMIT - becomes a limit order at limit_price once stop_price is reached.\nMust also appear in get_order_rules' order_types for this contract.\nCase-sensitive: use the uppercase value exactly as listed.\n"
+    },
+    "tif": {
+     "type": "string",
+     "enum": [
+      "DAY",
+      "OVT",
+      "OND"
+     ],
+     "description": "Time in force.\nDAY - valid only for the current trading session; cancelled if unfilled by session end.\nOVT (Overnight) - executed during the overnight trading session after regular market close.\nOND (Overnight Next Day) - placed for the overnight session, carries over into the next trading day if unfilled.\nMust also appear in get_order_rules' tifs for this contract, with order_type in that entry's order_types.\noutside_rth only applies when tif is DAY \u2014 OVT and OND already encode the extended-session behavior directly.\nCase-sensitive: use the uppercase value exactly as listed.\n"
+    },
+    "size": {
+     "type": "number",
+     "format": "double",
+     "description": "Order size in the instrument's units: shares for STK; contracts for OPT.\nIf the user says \"shares\" for an OPT order, treat that as contracts and use\nthe correct unit in reports. Must be a whole number \u2014 fractional share quantities are\nnot allowed in Agentic Trading. Decimal limit_price and stop_price are allowed. Supply exactly one of size or cash_size."
+    },
+    "cash_size": {
+     "type": "number",
+     "format": "double",
+     "description": "Order size in cash terms, denominated in the contract's trading currency (not the\naccount's base currency). Valid for STK only, and only when get_order_rules reports\ncash_quantity=true for the order_type. Supply exactly one of size or cash_size.\n"
+    },
+    "limit_price": {
+     "type": "number",
+     "format": "double",
+     "description": "Limit price. Required when order_type is LIMIT or STOP_LIMIT; ignored otherwise."
+    },
+    "stop_price": {
+     "type": "number",
+     "format": "double",
+     "description": "Stop (trigger) price. Required when order_type is STOP or STOP_LIMIT; ignored otherwise."
+    },
+    "outside_rth": {
+     "type": "boolean",
+     "description": "Allow execution outside regular trading hours during the current session. Only applies when tif is DAY \u2014 OVT and OND already specify the overnight session directly and ignore this flag."
+    },
+    "is_position_close": {
+     "type": "boolean",
+     "description": "Set to true only when this order reduces an existing position (closing all or part of\nit). Buying more of an instrument already held long is false; pass false for any order\nthat opens or increases a position.\n"
+    }
+   },
+   "required": [
+    "contract_id_ex",
+    "side",
+    "order_type",
+    "tif"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "correlation_id": {
+     "type": "string"
+    },
+    "description": {
+     "type": "string"
+    },
+    "errors": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "text": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "filled_quantity": {
+     "type": "string"
+    },
+    "order_id": {
+     "type": "string"
+    },
+    "order_status": {
+     "type": "string"
+    },
+    "pending_question": {
+     "type": "object",
+     "properties": {
+      "answers": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "default": {
+          "type": "boolean"
+         },
+         "tag": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "message": {
+       "type": "string"
+      },
+      "question_id": {
+       "type": "string"
+      },
+      "suppress_id": {
+       "type": "string"
+      }
+     }
+    },
+    "reject_reason": {
+     "type": "string"
+    },
+    "remaining_quantity": {
+     "type": "string"
+    },
+    "total_quantity": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Submit Order",
+   "readOnlyHint": false,
+   "destructiveHint": true,
+   "idempotentHint": false,
+   "openWorldHint": true
+  }
+ },
+ {
+  "name": "get_account_orders",
+  "title": "Get Account Orders",
+  "description": "Retrieves the list of orders for the user. Not flow-restricted \u2014 usable under either\nflow_type.\nEach order includes order_id, symbol, side, order type, status, quantity, price, and fill information. In AUTONOMOUS flow, order_id can be used with get_order_status, modify_order, and cancel_order; those tools are unavailable in REVIEW_AND_APPROVE flow.\nBy default only working (not yet completed) orders are returned. Pass show_completed=true\nto also include orders that completed today (filled, cancelled, etc.), which can reduce\nthe need for separate get_account_trades calls when reporting on recent fills.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "show_completed": {
+     "type": "boolean",
+     "description": "Include orders that completed today (filled, cancelled, etc.) in addition to working orders. Defaults to false (working orders only)."
+    }
+   },
+   "required": []
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "orders": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "cum_shares_qty": {
+        "type": "string"
+       },
+       "limit_price": {
+        "type": "string"
+       },
+       "order_id": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "order_status": {
+        "type": "string"
+       },
+       "order_time": {
+        "type": "string"
+       },
+       "order_type": {
+        "type": "string"
+       },
+       "primary_description": {
+        "type": "string"
+       },
+       "reject_reason": {
+        "type": "string"
+       },
+       "remaining_shares_qty": {
+        "type": "string"
+       },
+       "secondary_description": {
+        "type": "string"
+       },
+       "side": {
+        "type": "string",
+        "enum": [
+         "BUY",
+         "SELL"
+        ]
+       },
+       "total_shares_qty": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Account Orders",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_pa_allocation",
+  "title": "Portfolio Allocation",
+  "description": "Returns the portfolio's NAV broken down along one category dimension into long and (when present) short buckets, each with a `total` and an `items` list carrying id, name, nav, and weight.\n`short_positions` is only present when the account holds shorts in that dimension \u2014 consumers must null-check it.\nWeights sum to 1.0 within each bucket independently.\nThe long-side total denominator is category-dependent (netted of shorts for ASSET_CLASS and FINANCIAL_INSTRUMENT, gross for SECTOR/REGION/COUNTRY), so do not assume a common base across type values.\nItem `id` codes are opaque internal keys \u2014 display `name`, never interpret id.\nRelated tools: get_account_positions, get_account_balances, search_contracts.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "type": {
+     "type": "string",
+     "enum": [
+      "FINANCIAL_INSTRUMENT",
+      "ASSET_CLASS",
+      "SECTOR",
+      "REGION",
+      "COUNTRY",
+      "ALL"
+     ],
+     "description": "The breakdown dimension: FINANCIAL_INSTRUMENT, ASSET_CLASS, SECTOR, REGION, or COUNTRY.\nALL returns every dimension in a single response \u2014 prefer it over five separate calls for a full picture.\nCase-sensitive: use the uppercase value exactly as listed.\n"
+    },
+    "currency": {
+     "type": "string",
+     "description": "Three-letter currency code; default USD (account base currency).\nRequesting any non-base currency silently switches the response to the prior trading day with realtime:false \u2014 it does NOT return live data.\nVerify FX conversion is applied before relying on the figures.\n"
+    },
+    "date": {
+     "type": "string",
+     "description": "Historical snapshot date in yyyymmdd; omit for the live current-day view.\nReturns realtime:false with the date echoed.\nMust be on or after account inception (the `start` field from get_pa_performance_all_periods); earlier dates return a generic, non-retryable server error.\nPass as a JSON string, quoted \u2014 e.g. \"20260630\", not the number 20260630.\n"
+    }
+   },
+   "required": [
+    "type"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "allocations": {
+     "type": "object"
+    },
+    "currency": {
+     "type": "string"
+    },
+    "date": {
+     "type": "string"
+    },
+    "realtime": {
+     "type": "boolean"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Portfolio Allocation",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_pa_performance_all_periods",
+  "title": "Portfolio Performance - All Periods",
+  "description": "Returns the account's performance time series for every available window (1D, 7D, MTD, 1M, YTD, 1Y).\nWithin each period, `cps`, `nav`, and `dates` are parallel arrays of equal length indexed together.\n`cps` values are cumulative returns expressed as fractions measured from the period start (e.g. -0.106 = -10.6%), not percentages.\nThe return method is reported in the top-level `portfolio_measure` field as TWR (time-weighted) or MWR (money-weighted), set by account configuration.\nFor accounts younger than one year the 1Y series equals YTD, and inception-keyed periods may report start_nav 0.0 while the first element of the `nav` array holds the true opening value.\nRelated tools: get_account_positions, get_account_trades, get_price_history (for benchmarking the nav series).\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {},
+   "required": []
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "accounts": {
+     "type": "object"
+    },
+    "currency_type": {
+     "type": "string"
+    },
+    "included_accounts": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "portfolio_measure": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Portfolio Performance - All Periods",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_account_balances",
+  "title": "Get Account Balances",
+  "description": "Retrieves cash balances and market values broken down by currency.\nReturns one entry per currency.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {},
+   "required": []
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "balances": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "cash_balance": {
+        "type": "number",
+        "format": "double"
+       },
+       "currency": {
+        "type": "string"
+       },
+       "exchange_rate": {
+        "type": "number",
+        "format": "double"
+       },
+       "net_liquidation_value": {
+        "type": "number",
+        "format": "double"
+       },
+       "realized_pnl": {
+        "type": "number",
+        "format": "double"
+       },
+       "settled_cash": {
+        "type": "number",
+        "format": "double"
+       },
+       "stock_market_value": {
+        "type": "number",
+        "format": "double"
+       },
+       "unrealized_pnl": {
+        "type": "number",
+        "format": "double"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Account Balances",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_account_positions",
+  "title": "Get Account Positions",
+  "description": "Retrieves all open positions.\nEach position includes quantity, price, market value, P&L, and cost basis.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {},
+   "required": []
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "positions": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "asset_class": {
+        "type": "string"
+       },
+       "average_price": {
+        "type": "number",
+        "format": "double"
+       },
+       "contract_description": {
+        "type": "string"
+       },
+       "contract_id": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "currency": {
+        "type": "string"
+       },
+       "daily_pnl": {
+        "type": "number",
+        "format": "double"
+       },
+       "market_price": {
+        "type": "number",
+        "format": "double"
+       },
+       "market_value": {
+        "type": "number",
+        "format": "double"
+       },
+       "position": {
+        "type": "number",
+        "format": "double"
+       },
+       "unrealized_pnl": {
+        "type": "number",
+        "format": "double"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Account Positions",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_account_summary",
+  "title": "Get Account Summary",
+  "description": "Retrieves account-level financial metrics:\nnet liquidation value, equity with loan value, available funds, buying power, initial and maintenance margin, day trading status, and alike.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {},
+   "required": []
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "available_funds": {
+     "type": "number",
+     "format": "double"
+    },
+    "buying_power": {
+     "type": "number",
+     "format": "double"
+    },
+    "currency": {
+     "type": "string"
+    },
+    "day_trades_remaining": {
+     "type": "string"
+    },
+    "day_trades_remaining_t1": {
+     "type": "string"
+    },
+    "day_trades_remaining_t2": {
+     "type": "string"
+    },
+    "day_trades_remaining_t3": {
+     "type": "string"
+    },
+    "day_trades_remaining_t4": {
+     "type": "string"
+    },
+    "dividends": {
+     "type": "number",
+     "format": "double"
+    },
+    "equity_with_loan_value": {
+     "type": "number",
+     "format": "double"
+    },
+    "excess_liquidity": {
+     "type": "number",
+     "format": "double"
+    },
+    "gross_position_value": {
+     "type": "number",
+     "format": "double"
+    },
+    "initial_margin": {
+     "type": "number",
+     "format": "double"
+    },
+    "leverage": {
+     "type": "string"
+    },
+    "maintenance_margin": {
+     "type": "number",
+     "format": "double"
+    },
+    "net_liquidation": {
+     "type": "number",
+     "format": "double"
+    },
+    "total_cash_value": {
+     "type": "number",
+     "format": "double"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Account Summary",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "create_saved_screener",
+  "title": "Create Saved Screener",
+  "description": "Creates a saved screener definition. The definition contains its name, asset-class\nselector, exchange location IDs, sorting scanner (sort code), filters, and factors.\nChoose the selector from get_screener_asset_classes if it is not already known.\nCheck get_screener_templates for the selected selector when creating a new screener.\nIf a template clearly matches the user's request, use its filters and scanner or factors\nas a starting point, adapting them to the requested criteria. If none fits, build the\ndefinition from capabilities; a template is not required.\nBefore creating, call get_screener_capabilities exactly once for the selected selector\nand use its returned IDs and codes for criteria you add or change. For industry or\ninvestment-theme filtering, call get_screener_industries or get_screener_themes and include the selected exact\n{code, value, label} object in filters. Factors use the\n{id, weight} format: weights +1 through +3 prioritize higher values, while -1 through\n-3 prioritize lower values; an absolute weight of 3 is most important. A screener may\ncontain both a sorting scanner and factors: any non-zero-weight factor takes precedence, while\nthe sorting scanner determines the result order when factors are absent or all weights are\nzero. Provide a sorting scanner or at least one non-zero-weight factor. The screener name must\nbe no more than 40 characters. MultiSort allows at most 10 sort factors; if more are\nrequested, ask the user which 10 to keep. Before saving, use preview_screener to test\nthe configuration. Saving validates the definition before it is created. If the name is\nalready used, a numeric suffix is added. Returns id, content hash, and saved name.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string",
+     "description": "Display name for the screener; maximum 40 characters. A numeric suffix is added if the name is taken."
+    },
+    "selector": {
+     "type": "string",
+     "description": "Required asset-class selector from get_screener_asset_classes or a known supported selector; verify its criteria with get_screener_capabilities."
+    },
+    "locations": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "At least one exchange location ID, valid for the chosen asset-class selector and returned by get_screener_capabilities."
+    },
+    "scanner": {
+     "type": "string",
+     "description": "Sorting scanner: pass a scanners[].code returned by get_screener_capabilities. Used when factors are absent or all weights are zero; retained but ignored when any factor has a non-zero weight."
+    },
+    "filters": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "code": {
+        "type": "string"
+       },
+       "label": {
+        "type": "string"
+       },
+       "value": {
+        "type": "string"
+       }
+      }
+     },
+     "description": "Optional complete list of filters: [{code, value, label}]. Use label for industryLike and stockThemeIs filters returned by get_screener_industries or get_screener_themes; it is optional for ordinary filters. Defaults to []."
+    },
+    "factors": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "id": {
+        "type": "string"
+       },
+       "weight": {
+        "type": "integer",
+        "format": "int32"
+       }
+      }
+     },
+     "description": "Complete list of at most 10 MultiSort factors in {id, weight} format, including zero-weight factors. Use IDs returned by get_screener_capabilities. Weights +1 through +3 prioritize higher values, while -1 through -3 prioritize lower values. Any non-zero weight activates factor-based ranking and takes precedence over scanner; zero-weight factors do not activate factor ranking."
+    }
+   },
+   "required": [
+    "name",
+    "selector",
+    "locations"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "error": {
+     "type": "string"
+    },
+    "hash": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Create Saved Screener",
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": false,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "delete_saved_screener",
+  "title": "Delete Saved Screener",
+  "description": "Permanently deletes a saved screener identified by screener_id. This action is irreversible. The ID must come from list_saved_screeners. Confirm with the user before calling.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "screener_id": {
+     "type": "string",
+     "description": "Saved screener identifier returned by list_saved_screeners."
+    }
+   },
+   "required": [
+    "screener_id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "error": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Delete Saved Screener",
+   "readOnlyHint": false,
+   "destructiveHint": true,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_saved_screener",
+  "title": "Get Saved Screener",
+  "description": "Returns the full definition of a saved screener for inspection or reuse. This\ndescribes its criteria, not its current results; use run_saved_screener to retrieve\nmatching instruments. When presenting a definition with one or more non-zero-weight\nfactors, describe the factor ranking and do not describe the scanner; the scanner is\nreturned only so the complete saved definition can be preserved on update.\nThe details object contains:\nname (string): display name.\nselector (string): asset-class selector used by this saved definition. Use\nget_screener_asset_classes to resolve its product and region when needed.\nlocations (array of strings): exchange location IDs included in this saved definition;\nget_screener_capabilities lists valid locations for its selector.\nscanner (string, optional): sorting scanner (sort code) returned by\nget_screener_capabilities. Sort codes commonly follow SCAN_<metric>_<ASC|DESC>, where\nASC ranks lower values first and DESC ranks higher values first; for example,\nSCAN_changePerc_ASC ranks the largest percentage decliners first and\nSCAN_changePerc_DESC ranks the largest percentage gainers first. Do not infer a code's\nname or direction from this pattern: IMPVOLATCHANGEPERC uses\nTOP_OPT_IMP_VOLAT_LOSE (decliners) and TOP_OPT_IMP_VOLAT_GAIN (gainers). This field is\nreturned as saved, including when it is ignored because the screener has one or more\nnon-zero-weight factors and uses factor-based ranking instead. Do not describe this\nfield when presenting a factor-ranked screener.\nfilters (array, optional): filter code and value pairs. Values are strings; codes and\nunits depend on the asset-class selector and exchange location. For example, avgVolumeAbove is measured\nin shares and usdMarketCapAbove in US dollars.\nfactors (array, optional): factors use the {id, weight} format. Positive weights (+1\nto +3) prioritize higher values; negative weights (-1 to -3) prioritize lower values;\nan absolute weight of 3 is most important. Factors with a non-zero weight use\nfactor-based ranking; the returned sorting scanner is retained but does not apply. When factors are absent or all weights\nare zero, the screener uses the sorting scanner to determine the result\norder.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "screener_id": {
+     "type": "string",
+     "description": "Saved screener id returned by list_saved_screeners. Pass it as a JSON string, for\nexample \"2\", not the number 2."
+    }
+   },
+   "required": [
+    "screener_id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "details": {
+     "type": "object",
+     "properties": {
+      "factors": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "weight": {
+          "type": "integer",
+          "format": "int32"
+         }
+        }
+       }
+      },
+      "filters": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "code": {
+          "type": "string"
+         },
+         "label": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "locations": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "name": {
+       "type": "string"
+      },
+      "scanner": {
+       "type": "string"
+      },
+      "selector": {
+       "type": "string"
+      }
+     }
+    },
+    "error": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Saved Screener",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_screener_asset_classes",
+  "title": "Get Screener Asset Classes",
+  "description": "Lists the supported screener asset-class selectors, their regions and products, and the default selection. Use the chosen selector with get_screener_capabilities.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {},
+   "required": []
+  },
+  "annotations": {
+   "title": "Get Screener Asset Classes",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_screener_capabilities",
+  "title": "Get Screener Capabilities",
+  "description": "Retrieves screener capabilities for exactly one asset-class selector: exchange\nlocation IDs, aggregated criteria, and factor weights. Each criterion has a name\nand may include a filter, scanners, and factor_id. Use a code from a criterion's\nscanners to order results; each scanner includes its direction. Use factor_id for\nfactor sorting; factor_name is present only when different from the criterion name.\nWhen present, the filter provides type, codes (above/below for range filters),\nvalue_type, units, and histogram_id (an identifier, not histogram data). A\ncriterion can have a factor without a filter or scanners. Only range filters are\ncurrently exposed; other filter types may have codes without above/below in the\nfuture. Industries and investment themes are returned by the dedicated\nget_screener_industries and get_screener_themes tools. Before calling, choose a\nselector matching the user's requested product and region from\nget_screener_asset_classes, or reuse a known supported selector. If the user has no\npreference, use the selector marked as the default. Before creating, updating, or\nconfiguring a screener for a selector, call this exactly once for that selector and use\nonly its returned IDs and codes. Capabilities are selector-specific; do not call this\nagain for the same selector during the same operation. The response is scoped to the\ncurrent authenticated user and requested selector.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "selector": {
+     "type": "string",
+     "description": "Required asset-class selector. Match the requested product and region using\nget_screener_asset_classes, or reuse a known supported selector."
+    }
+   },
+   "required": [
+    "selector"
+   ]
+  },
+  "annotations": {
+   "title": "Get Screener Capabilities",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_screener_industries",
+  "title": "Get Screener Industries",
+  "description": "Returns the industries supported by a selector, grouped by sector. Choose a selector\nfrom get_screener_asset_classes if it is not already known. Call this when the\ncustomer requests an industry filter; do not guess an industry value. Add the selected\nindustry to filters for preview_screener, create_saved_screener, or\nupdate_saved_screener as {code: \"industryLike\", value: <industry value>, label:\n<industry name>}. For example: {\"code\":\"industryLike\",\"value\":\"Basic\nMaterials|Mining\",\"label\":\"Mining\"}. The label makes the saved definition\nunderstandable; the value must exactly match this tool's response. This filter can be\ncombined with ordinary capability filters and theme filters.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "selector": {
+     "type": "string",
+     "description": "Required asset-class selector; choose from get_screener_asset_classes or reuse a known supported selector."
+    }
+   },
+   "required": [
+    "selector"
+   ]
+  },
+  "annotations": {
+   "title": "Get Screener Industries",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_screener_templates",
+  "title": "Get Screener Templates",
+  "description": "Retrieves ready-made screener templates for one asset-class selector. Choose a selector from get_screener_asset_classes if it is not already known. When a template clearly matches the customer's request, use its criteria as a starting point and adapt them to the requested filters and ranking; templates are optional. Templates provide filters and either a sorting scanner or ranking factors. Use get_screener_capabilities to verify codes you add or change.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "selector": {
+     "type": "string",
+     "description": "Required asset-class selector; choose from get_screener_asset_classes or reuse a known supported selector."
+    }
+   },
+   "required": [
+    "selector"
+   ]
+  },
+  "annotations": {
+   "title": "Get Screener Templates",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_screener_themes",
+  "title": "Get Screener Themes",
+  "description": "Returns the investment themes supported by a selector, grouped by theme group. Choose a\nselector from get_screener_asset_classes if it is not already known. Call this\nwhen the customer requests a theme filter; do not guess a theme value. Add the selected\ntheme to filters for preview_screener, create_saved_screener, or\nupdate_saved_screener as {code: \"stockThemeIs\", value: <theme value>, label: <theme\nname>}. For example: {\"code\":\"stockThemeIs\",\"value\":\"45\",\"label\":\"Aviation\nSafety\"}. The label makes the saved definition understandable; the value must exactly\nmatch this tool's response. This filter can be combined with ordinary capability filters\nand industry filters.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "selector": {
+     "type": "string",
+     "description": "Required asset-class selector; choose from get_screener_asset_classes or reuse a known supported selector."
+    }
+   },
+   "required": [
+    "selector"
+   ]
+  },
+  "annotations": {
+   "title": "Get Screener Themes",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "list_saved_screeners",
+  "title": "List Saved Screeners",
+  "description": "Returns the user's saved screeners. Each entry contains:\nid (string): screener identifier. Pass this value as a string to get_saved_screener or\nrun_saved_screener.\nname (string): display name assigned to the screener.\nhash (integer): content hash for the screener definition. Use it to detect\nwhether a cached definition is stale; it does not represent changes in its live\nresults.\nTakes no parameters.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {},
+   "required": []
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "screeners": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "hash": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "id": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "List Saved Screeners",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "preview_screener",
+  "title": "Preview Screener",
+  "description": "Validates a new screener configuration and runs it immediately. Choose the asset-class\nselector from get_screener_asset_classes if it is not already known. Before running, call\nget_screener_capabilities exactly once for this configuration's selector, then use only\nits returned selector, location IDs, ordinary filter codes and value types,\nscanner codes, and factor IDs and weights when building criteria from scratch or\nadapting a template. For an industry or investment-theme request, also call\nget_screener_industries or get_screener_themes and add the selected {code, value, label}\nobject to filters. If a clearly relevant template has already been found, use it as a\nstarting point and adapt its criteria to the user's request; otherwise build the criteria\nfrom capabilities. A template is not required. This tool returns current matching\ninstruments; it does not save a screener. A screener may\ncontain both a sorting scanner and factors. Any\nnon-zero-weight factor activates factor-based ranking and takes precedence over the\nsorting scanner. If factors are absent or all weights are zero, the sorting scanner determines the\nresult order. Provide a sorting scanner or at least one non-zero-weight factor. Factors use\n{id, weight}: weights +1 through +3 prioritize higher values, while -1 through -3\nprioritize lower values; an absolute weight of 3 is most important. MultiSort allows\nat most 10 sort factors; if more are requested, ask the user which 10 to keep.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "selector": {
+     "type": "string",
+     "description": "Required asset-class selector from get_screener_asset_classes or a known supported selector; verify its criteria with get_screener_capabilities."
+    },
+    "locations": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "At least one exchange location ID, valid for the chosen asset-class selector and returned by get_screener_capabilities."
+    },
+    "filters": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "code": {
+        "type": "string"
+       },
+       "label": {
+        "type": "string"
+       },
+       "value": {
+        "type": "string"
+       }
+      }
+     },
+     "description": "Optional complete list of filters: [{code, value, label}]. Use label for industryLike and stockThemeIs filters returned by get_screener_industries or get_screener_themes; it is optional for ordinary filters. Defaults to []."
+    },
+    "scanner": {
+     "type": "string",
+     "description": "Sorting scanner: pass a scanners[].code returned by get_screener_capabilities. Used when factors are absent or all weights are zero; retained but ignored when any factor has a non-zero weight."
+    },
+    "factors": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "id": {
+        "type": "string"
+       },
+       "weight": {
+        "type": "integer",
+        "format": "int32"
+       }
+      }
+     },
+     "description": "Complete list of at most 10 MultiSort factors in {id, weight} format, including zero-weight factors. Use IDs returned by get_screener_capabilities. Weights +1 through +3 prioritize higher values, while -1 through -3 prioritize lower values. Any non-zero weight activates factor-based ranking and takes precedence over scanner; zero-weight factors do not activate factor ranking."
+    },
+    "max_results": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Number of results from 1 to 50; defaults to 10."
+    }
+   },
+   "required": [
+    "selector",
+    "locations"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "definition": {
+     "type": "object",
+     "properties": {
+      "factors": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "weight": {
+          "type": "integer",
+          "format": "int32"
+         }
+        }
+       }
+      },
+      "filters": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "code": {
+          "type": "string"
+         },
+         "label": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "locations": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "name": {
+       "type": "string"
+      },
+      "scanner": {
+       "type": "string"
+      },
+      "selector": {
+       "type": "string"
+      }
+     }
+    },
+    "results": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "company_name": {
+        "type": "string"
+       },
+       "contract_description": {
+        "type": "string"
+       },
+       "contract_id": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "factor_scores": {
+        "type": "array",
+        "items": {
+         "type": "number",
+         "format": "double"
+        }
+       },
+       "rank": {
+        "type": "integer",
+        "format": "int32"
+       },
+       "score": {
+        "type": "number",
+        "format": "double"
+       }
+      }
+     }
+    },
+    "total_matched": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "url": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Preview Screener",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": true
+  }
+ },
+ {
+  "name": "run_saved_screener",
+  "title": "Run Saved Screener",
+  "description": "Runs a saved screener and returns a current ranked snapshot of its matching\ninstruments.\n\nIf the user specified a screener name rather than an id, first resolve it with\nlist_saved_screeners. The response's definition field is the source of truth for the\nparameters actually run. When presenting results, include the definition's name,\nasset-class selector, exchange location IDs, and every filter with its units. For\nscreeners without active factors, include the sorting scanner (sort code) and explain its order in plain language (ASC =\nlowest values first; DESC = highest values first). For screeners with one or more\nnon-zero-weight factors, describe the factor ranking instead and do not describe the\nsorting scanner; it does not apply.\nUnless the user gives explicit presentation instructions, display each result's rank,\ncontract_description, and company_name.\n\nThe response contains:\n\ndefinition (object): the exact screener definition used for this run.\nresults (array): the matching instruments. Each result contains:\n\nrank (integer): position in the screener's sort order, starting at 1.\ncontract_id (integer): IBKR contract identifier. Use this value with\nget_price_snapshot or other contract-level tools to retrieve price, volume, and other\ndetails.\ncompany_name (string): human-readable company name of the instrument.\ncontract_description (string): human-readable name or description of the instrument.\nscore (number, factor screeners only): combined factor-ranking score.\nfactor_scores (array of numbers, factor screeners only): per-factor ranking scores,\nin the same order as the screener's factors.\n\ntotal_matched (integer): total number of instruments meeting the screener criteria.\nurl (string): direct link to open the screener in IBKR.\n\nResults from a screener using a sorting scanner do not include the sort metric value,\nprice, or volume.\n\nResults are a live snapshot: ranks, membership, and total_matched can change between\ncalls. The tool returns the first max_results results only, up to 50. It has no offset\nor paging parameter, so positions beyond that limit cannot be retrieved. Definitions\nwith one or more non-zero-weight factors use factor-based ranking. Definitions with no\nfactors or only zero-weight factors use their scanner to determine result order. Both\nmodes return the same response shape.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "screener_id": {
+     "type": "string",
+     "description": "Saved screener id returned by list_saved_screeners. Pass it as a JSON string, for\nexample \"2\", not the number 2."
+    },
+    "max_results": {
+     "type": "integer",
+     "format": "int32",
+     "description": "Number of results to return, from 1 to 50. Defaults to 10. Values outside this\nrange are rejected with an error."
+    }
+   },
+   "required": [
+    "screener_id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "definition": {
+     "type": "object",
+     "properties": {
+      "factors": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "weight": {
+          "type": "integer",
+          "format": "int32"
+         }
+        }
+       }
+      },
+      "filters": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "code": {
+          "type": "string"
+         },
+         "label": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "locations": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "name": {
+       "type": "string"
+      },
+      "scanner": {
+       "type": "string"
+      },
+      "selector": {
+       "type": "string"
+      }
+     }
+    },
+    "results": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "company_name": {
+        "type": "string"
+       },
+       "contract_description": {
+        "type": "string"
+       },
+       "contract_id": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "factor_scores": {
+        "type": "array",
+        "items": {
+         "type": "number",
+         "format": "double"
+        }
+       },
+       "rank": {
+        "type": "integer",
+        "format": "int32"
+       },
+       "score": {
+        "type": "number",
+        "format": "double"
+       }
+      }
+     }
+    },
+    "total_matched": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "url": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Run Saved Screener",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": true
+  }
+ },
+ {
+  "name": "update_saved_screener",
+  "title": "Update Saved Screener",
+  "description": "Replaces the complete definition of an existing saved screener and returns its new\ncontent hash and saved name. If the name is already used, a numeric suffix is added.\nPreserve the selector from get_saved_screener unless changing asset class; for a new\nselection, consult get_screener_asset_classes.\nBefore updating, call get_screener_capabilities exactly once for the\nselected selector and use only its returned IDs and codes. For industry or\ninvestment-theme filtering, call get_screener_industries or get_screener_themes and\ninclude the selected exact {code, value, label} object in filters. Factors use the {id, weight} format: a positive weight\nprioritizes higher values, a negative weight prioritizes lower values, and absolute\nweights range from 1 (somewhat important) to 3 (most important). A screener may\ncontain both a sorting scanner and factors: any non-zero-weight factor takes precedence, while\nthe sorting scanner determines the result order when factors are absent or all weights are\nzero. Provide a sorting scanner or at least one non-zero-weight factor. This fully replaces\nthe saved definition: send filters, factors, and the sorting scanner exactly as returned by\nget_saved_screener to preserve them, including a scanner ignored because a factor has a\nnon-zero weight; omitting any of these fields clears it. MultiSort allows at most 10 sort\nfactors, including zero-weight factors; ask the user which 10 to keep if more are present. Before\nsaving, use preview_screener to test the configuration. Saving validates the\ndefinition before it is updated. Confirm with the user before overwriting.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "screener_id": {
+     "type": "string",
+     "description": "Saved screener identifier returned by list_saved_screeners."
+    },
+    "name": {
+     "type": "string",
+     "description": "Display name for the screener; maximum 40 characters. A numeric suffix is added if the name is taken."
+    },
+    "selector": {
+     "type": "string",
+     "description": "Required asset-class selector. Preserve the saved selector or choose a new one via get_screener_asset_classes; verify its criteria with get_screener_capabilities."
+    },
+    "locations": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "At least one exchange location ID, valid for the chosen asset-class selector and returned by get_screener_capabilities."
+    },
+    "scanner": {
+     "type": "string",
+     "description": "Sorting scanner: pass a scanners[].code returned by get_screener_capabilities. Used when factors are absent or all weights are zero; retained but ignored when any factor has a non-zero weight."
+    },
+    "filters": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "code": {
+        "type": "string"
+       },
+       "label": {
+        "type": "string"
+       },
+       "value": {
+        "type": "string"
+       }
+      }
+     },
+     "description": "Optional complete list of filters: [{code, value, label}]. Use label for industryLike and stockThemeIs filters returned by get_screener_industries or get_screener_themes; it is optional for ordinary filters. Defaults to []."
+    },
+    "factors": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "id": {
+        "type": "string"
+       },
+       "weight": {
+        "type": "integer",
+        "format": "int32"
+       }
+      }
+     },
+     "description": "Complete list of at most 10 MultiSort factors in {id, weight} format, including zero-weight factors. Use IDs returned by get_screener_capabilities. Weights +1 through +3 prioritize higher values, while -1 through -3 prioritize lower values. Any non-zero weight activates factor-based ranking and takes precedence over scanner; zero-weight factors do not activate factor ranking."
+    }
+   },
+   "required": [
+    "screener_id",
+    "name",
+    "selector",
+    "locations"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "error": {
+     "type": "string"
+    },
+    "hash": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "name": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Update Saved Screener",
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_account_trades",
+  "title": "Get Account Trades",
+  "description": "Retrieves a snapshot of trades for the user over the requested time period.\nEach trade includes trade ID, symbol, side, size, price, commission, and trade time.\nAll date boundaries are calculated in UTC.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "period": {
+     "type": "string",
+     "enum": [
+      "TODAY",
+      "DAYS_7",
+      "DAYS_30",
+      "DAYS_60",
+      "DAYS_90",
+      "MONTH_TO_DATE",
+      "YEAR_TO_DATE",
+      "LAST_QUARTER",
+      "TWO_QUARTERS_AGO",
+      "THREE_QUARTERS_AGO",
+      "FOUR_QUARTERS_AGO"
+     ],
+     "description": "Time period for which trades should be retrieved.\nDefaults to TODAY if not specified. All boundaries are calculated in UTC.\nTODAY \u2014 current calendar day (UTC);\nDAYS_7/DAYS_30/DAYS_60/DAYS_90 \u2014 rolling N-day window ending today (UTC);\nMONTH_TO_DATE \u2014 first day of the current month through today (UTC);\nYEAR_TO_DATE \u2014 first day of the current year through today (UTC);\nLAST_QUARTER/TWO_QUARTERS_AGO/THREE_QUARTERS_AGO/FOUR_QUARTERS_AGO \u2014 individual completed calendar quarters, most recent first.\nCase-sensitive: use the uppercase value exactly as listed.\n"
+    }
+   },
+   "required": []
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "trades": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "commission": {
+        "type": "number",
+        "format": "double"
+       },
+       "company_name": {
+        "type": "string"
+       },
+       "currency": {
+        "type": "string"
+       },
+       "description": {
+        "type": "string"
+       },
+       "exchange": {
+        "type": "string"
+       },
+       "formatted_price": {
+        "type": "string"
+       },
+       "net_amount": {
+        "type": "number",
+        "format": "double"
+       },
+       "order_id": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "order_type": {
+        "type": "string"
+       },
+       "price": {
+        "type": "number",
+        "format": "double"
+       },
+       "realized_pnl": {
+        "type": "number",
+        "format": "double"
+       },
+       "sec_type": {
+        "type": "string"
+       },
+       "side": {
+        "type": "string"
+       },
+       "size": {
+        "type": "number",
+        "format": "double"
+       },
+       "stop_price": {
+        "type": "number",
+        "format": "double"
+       },
+       "symbol": {
+        "type": "string"
+       },
+       "tif": {
+        "type": "string"
+       },
+       "trade_id": {
+        "type": "string"
+       },
+       "trade_time": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Account Trades",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "create_watchlist",
+  "title": "Create Watchlist",
+  "description": "Creates a new watchlist with the given name and an initial set of instruments.\nWatchlist names must be non-blank.\nReturns the new watchlist's id and hash.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string",
+     "description": "Display name for the new watchlist. Must be non-blank."
+    },
+    "instruments": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Initial set of instruments as contract_id_ex values.\nSTK: stringify underlying_contract_id from search_contracts (e.g. \"8314\").\nFUT: use contract_id_ex from search_futures verbatim (e.g. \"12345@CME\").\nOPT/FOP: use call_contract_id_ex or put_contract_id_ex from get_option_data verbatim (e.g. \"762228321@CBOE\").\nEvery element is a JSON string, even when it looks numeric \u2014 e.g. [\"8314\"], never [8314].\n"
+    }
+   },
+   "required": [
+    "name",
+    "instruments"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "hash": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "id": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Create Watchlist",
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": false,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "delete_watchlist",
+  "title": "Delete Watchlist",
+  "description": "Permanently deletes a watchlist. This action is irreversible.\nConfirm with the user before calling.\nCall get_watchlists first to resolve the watchlist name to its id.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string",
+     "description": "Watchlist identifier.\nCall get_watchlists first to resolve the watchlist name to this id.\nPass as a JSON string, quoted \u2014 e.g. \"124\", not the number 124."
+    }
+   },
+   "required": [
+    "id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object"
+  },
+  "annotations": {
+   "title": "Delete Watchlist",
+   "readOnlyHint": false,
+   "destructiveHint": true,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "edit_watchlist",
+  "title": "Edit Watchlist",
+  "description": "Updates a watchlist's name and instruments (id, name, and instruments are all required \u2014 full-replace semantics).\nThe instruments list is full-replace: the submitted list becomes the watchlist's complete new content.\nTo add or remove instruments: call get_watchlist first to retrieve the current name and instruments, then submit the full updated list here (get_watchlist \u2192 modify \u2192 edit_watchlist).\nSource the current name from get_watchlist \u2014 it is required and not returned by this call.\nCall get_watchlists first to resolve the watchlist name to its id.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string",
+     "description": "Watchlist identifier.\nCall get_watchlists first to resolve the watchlist name to this id.\nPass as a JSON string, quoted \u2014 e.g. \"124\", not the number 124."
+    },
+    "name": {
+     "type": "string",
+     "description": "New display name for the watchlist.\nSource the current name from get_watchlist if renaming is not intended."
+    },
+    "instruments": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Complete new instruments list as contract_id_ex values (replaces the entire watchlist).\nCall get_watchlist first when adding or removing individual instruments.\nSTK: stringify underlying_contract_id from search_contracts (e.g. \"8314\").\nFUT: use contract_id_ex from search_futures verbatim (e.g. \"12345@CME\").\nOPT/FOP: use call_contract_id_ex or put_contract_id_ex from get_option_data verbatim (e.g. \"762228321@CBOE\").\ncontract_id_ex values from get_watchlist output can be passed back verbatim.\nEvery element is a JSON string, even when it looks numeric \u2014 e.g. [\"8314\"], never [8314].\n"
+    }
+   },
+   "required": [
+    "id",
+    "name",
+    "instruments"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "hash": {
+     "type": "integer",
+     "format": "int64"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Edit Watchlist",
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_watchlist",
+  "title": "Get Watchlist",
+  "description": "Returns the name, hash, and full instruments list for a specific watchlist.\nReturns an empty instruments array if the watchlist has no instruments.\nEach element of the instruments list contains: contract_id_ex (string, the instrument identifier used by create_watchlist and edit_watchlist) and contract_description (human-readable name or description of the instrument).\ncontract_id_ex values returned here are identical in format to those accepted by create_watchlist and edit_watchlist \u2014 pass them back verbatim, no conversion needed.\nCall get_watchlists first to resolve the watchlist name to its id.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string",
+     "description": "Watchlist identifier.\nCall get_watchlists first to resolve the watchlist name to this id.\nPass as a JSON string, quoted \u2014 e.g. \"124\", not the number 124."
+    }
+   },
+   "required": [
+    "id"
+   ]
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "hash": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "instruments": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "contract_description": {
+        "type": "string"
+       },
+       "contract_id_ex": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "name": {
+     "type": "string"
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Watchlist",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "get_watchlists",
+  "title": "Get Watchlists",
+  "description": "Returns all of the user's watchlists with their id, name, and hash.\nReturns an empty list if the user has no watchlists.\nUse get_watchlist to see the instruments on a specific list.",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {},
+   "required": []
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "watchlists": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "hash": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "id": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "Get Watchlists",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "whats_new",
+  "title": "What's New",
+  "description": "Returns recent updates, new tools, and changes to this server.\nCall this when the user asks what's new, what changed, or about server capabilities.\n",
+  "inputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "since_version": {
+     "type": "string",
+     "description": "Return only changes after this version, e.g. '0.0.5'. Omit for full history."
+    }
+   },
+   "required": []
+  },
+  "outputSchema": {
+   "$schema": "https://json-schema.org/draft/2020-12/schema",
+   "type": "object",
+   "properties": {
+    "changes": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "date": {
+        "type": "string"
+       },
+       "description": {
+        "type": "string"
+       },
+       "type": {
+        "type": "string"
+       },
+       "version": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "annotations": {
+   "title": "What's New",
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ }
+]

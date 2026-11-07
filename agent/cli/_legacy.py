@@ -5038,6 +5038,48 @@ def cmd_connector_positions(
     console.print(table)
     return EXIT_SUCCESS
 
+def cmd_connector_inventory(
+    profile_id: Optional[str] = None,
+    *,
+    list_only: bool = False,
+    tool: str | None = None,
+    args_json: str | None = None,
+) -> int:
+    """Print IBKR official MCP read catalog or run account inventory / raw-read."""
+    from src.trading.service import (
+        describe_ibkr_official_mcp_catalog,
+        read_ibkr_official_mcp_inventory,
+        read_ibkr_official_mcp_tool,
+    )
+
+    if list_only:
+        console.print_json(data=describe_ibkr_official_mcp_catalog())
+        return EXIT_SUCCESS
+    try:
+        if tool:
+            arguments: dict[str, Any] = {}
+            if args_json:
+                parsed = json.loads(args_json)
+                if not isinstance(parsed, dict):
+                    console.print("[red]--args must be a JSON object[/red]")
+                    return EXIT_USAGE_ERROR
+                arguments = parsed
+            result = read_ibkr_official_mcp_tool(tool, _profile_id(profile_id), arguments)
+        else:
+            result = read_ibkr_official_mcp_inventory(_profile_id(profile_id))
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Connector inventory failed:[/red] {exc}")
+        return EXIT_RUN_FAILED
+    if result.get("status") == "error":
+        console.print_json(data=result)
+        return EXIT_RUN_FAILED
+    if result.get("status") == "not_authorized":
+        console.print(f"[red]{rich_escape(str(result.get('error')))}[/red]")
+        return EXIT_RUN_FAILED
+    console.print_json(data=result)
+    return EXIT_SUCCESS
+
+
 def cmd_connector_orders(
     profile_id: Optional[str] = None,
     *,
@@ -5403,6 +5445,13 @@ def _dispatch_connector(args: argparse.Namespace) -> int:
             account=args.account,
             **({"connection_id": args.connection_id} if getattr(args, "connection_id", None) else {}),
         )
+    if sub == "inventory":
+        return cmd_connector_inventory(
+            args.profile,
+            list_only=args.list_only,
+            tool=args.tool,
+            args_json=args.tool_args,
+        )
     if sub == "orders":
         return cmd_connector_orders(
             args.profile,
@@ -5744,6 +5793,29 @@ def _build_parser() -> argparse.ArgumentParser:
 
     connector_authorize = connector_subparsers.add_parser("authorize", help="Authorize a remote MCP connector profile")
     _add_connector_profile_arg(connector_authorize)
+
+    connector_inventory = connector_subparsers.add_parser(
+        "inventory",
+        help="Read IBKR official MCP account inventory or one allowlisted tool",
+    )
+    _add_connector_profile_arg(connector_inventory)
+    connector_inventory.add_argument(
+        "--list",
+        dest="list_only",
+        action="store_true",
+        help="Print the fail-closed read allowlist without calling IBKR",
+    )
+    connector_inventory.add_argument(
+        "--tool",
+        default=None,
+        help="Raw-read one allowlisted official MCP tool instead of the account batch",
+    )
+    connector_inventory.add_argument(
+        "--args",
+        dest="tool_args",
+        default=None,
+        help='JSON object of schema-supported arguments for --tool, e.g. \'{"period":"DAYS_7"}\'',
+    )
 
     connector_account = connector_subparsers.add_parser("account", help="Read account summary")
     _add_connector_profile_arg(connector_account)

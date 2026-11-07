@@ -60,6 +60,8 @@ REQUIRED_TOOL_NAMES = {
     "trading_orders",
     "trading_quote",
     "trading_history",
+    "trading_inventory",
+    "trading_read",
     "alpha_zoo",
     "alpha_bench",
     "paper_trade_step",

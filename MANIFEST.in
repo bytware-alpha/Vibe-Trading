@@ -19,6 +19,9 @@ include agent/.env.example
 # Runtime schema-loading policy
 recursive-include agent/src/agent *.json
 
+# IBKR official MCP tools/list snapshot used by the fail-closed read allowlist
+include agent/src/trading/connectors/ibkr/official_mcp_tools.json
+
 # Alpha Zoo factor metadata and per-zoo LICENSE / NOTICE files
 recursive-include agent/src/factors *.yaml *.md
 

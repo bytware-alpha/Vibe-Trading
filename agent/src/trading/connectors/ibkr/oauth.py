@@ -339,10 +339,12 @@ def assert_ibkr_authorization_url_matches_configured(
 
 
 def assert_ibkr_readonly_remote_tool(remote_name: str) -> None:
-    """Refuse IBKR MCP tool calls that are not the verified read mapping.
+    """Refuse IBKR MCP tool calls that are not on the fail-closed read allowlist.
 
     Local ``trading_*`` exposure is not enough: a widened grant must still not
-    be able to invoke write/order tools through the MCP adapter.
+    be able to invoke write/order tools through the MCP adapter. Unknown names
+    and excluded order helpers (preview / combo construction) are denied even
+    when IBKR annotated them read-only.
 
     Args:
         remote_name: Remote IBKR MCP tool name.
@@ -352,11 +354,10 @@ def assert_ibkr_readonly_remote_tool(remote_name: str) -> None:
     """
     from src.trading.connectors.ibkr.mcp import readonly_remote_tools
 
-    allowed = readonly_remote_tools()
-    if remote_name not in allowed:
+    if remote_name not in readonly_remote_tools():
         raise IBKROAuthScopeError(
-            "IBKR official MCP is mcp.read-only; refusing remote tool "
-            f"'{remote_name}'. Allowed: {sorted(allowed)}"
+            "IBKR official MCP is fail-closed read-only; refusing remote tool "
+            f"'{remote_name}'"
         )
 
 

@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.trading.connectors.ibkr.official_mcp_catalog import (
+    readonly_remote_tools as catalog_readonly_remote_tools,
+)
+
 _REMOTE_TOOL_NAMES = {
     "account": "get_account_summary",
     "positions": "get_account_positions",
+    "orders": "get_account_orders",
 }
 
 _ACCOUNT_TAGS = {
@@ -25,8 +30,8 @@ _ACCOUNT_TAGS = {
 
 
 def readonly_remote_tools() -> frozenset[str]:
-    """Return the verified IBKR official MCP read tools."""
-    return frozenset(_REMOTE_TOOL_NAMES.values())
+    """Return the fail-closed IBKR official MCP read allowlist."""
+    return catalog_readonly_remote_tools()
 
 
 def remote_tool_name(operation: str) -> str | None:
@@ -35,8 +40,14 @@ def remote_tool_name(operation: str) -> str | None:
 
 
 def remote_arguments(operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    """Return IBKR's argument-free account/position request payload."""
-    if operation in _REMOTE_TOOL_NAMES:
+    """Map generic trading arguments onto IBKR official MCP payloads."""
+    if operation == "account":
+        return {}
+    if operation == "positions":
+        return {}
+    if operation == "orders":
+        if arguments.get("include_executions") or arguments.get("show_completed"):
+            return {"show_completed": True}
         return {}
     return dict(arguments)
 
@@ -72,6 +83,27 @@ def normalize_result(operation: str, result: dict[str, Any]) -> dict[str, Any]:
                 "avg_cost": row.get("average_price"),
                 "unrealized_pnl": row.get("unrealized_pnl"),
                 "sec_type": row.get("asset_class"),
+            }
+            for row in rows
+            if isinstance(row, dict)
+        ]
+        return normalized
+
+    if operation == "orders":
+        rows = structured.get("orders")
+        if not isinstance(rows, list):
+            return normalized
+        normalized["open_orders"] = [
+            {
+                "order_id": row.get("order_id"),
+                "symbol": row.get("primary_description") or row.get("secondary_description"),
+                "action": row.get("side"),
+                "order": {
+                    "orderType": row.get("order_type"),
+                    "totalQuantity": row.get("total_shares_qty"),
+                    "lmtPrice": row.get("limit_price"),
+                },
+                "status": {"status": row.get("order_status")},
             }
             for row in rows
             if isinstance(row, dict)

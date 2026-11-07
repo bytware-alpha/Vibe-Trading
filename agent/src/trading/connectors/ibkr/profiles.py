@@ -33,12 +33,14 @@ IBKR_PROFILES: tuple[TradingProfile, ...] = (
         label="IBKR Live · Official MCP Read-Only",
         environment="live",
         transport="remote_mcp",
-        capabilities=("account.read", "positions.read"),
+        capabilities=("account.read", "positions.read", "orders.read"),
         readonly=True,
         config={"server": "ibkr"},
         notes=(
-            "Requires IBKR official MCP OAuth approval. Uses the verified "
-            "get_account_summary and get_account_positions read-only tools."
+            "Requires IBKR official MCP OAuth approval. Fail-closed read "
+            "allowlist from the official tools/list; mutations stay blocked. "
+            "Use connector inventory / trading_inventory and connector read "
+            "/ trading_read for the remaining annotated reads."
         ),
     ),
     TradingProfile(
@@ -47,14 +49,16 @@ IBKR_PROFILES: tuple[TradingProfile, ...] = (
         label="IBKR Live · Official MCP Trading Capability",
         environment="live",
         transport="remote_mcp",
-        capabilities=("account.read", "positions.read"),
+        capabilities=("account.read", "positions.read", "orders.read"),
         readonly=True,
         config={"server": "ibkr"},
         notes=(
             "Requires IBKR official MCP OAuth for documented scopes "
             "mcp.read, mcp.write, and mcp.orders.submit. Authorizes trading "
             "capability on the connection only; this profile does not expose "
-            "order placement through vibe-trading-mcp or trading_* tools."
+            "order placement through vibe-trading-mcp or trading_* tools. "
+            "Read allowlist and inventory/raw-read are the same as the "
+            "read-only profile."
         ),
     ),
 )

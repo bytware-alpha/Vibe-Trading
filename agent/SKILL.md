@@ -1,6 +1,6 @@
 ---
 name: vibe-trading
-version: 0.1.19.post2
+version: 0.1.19.post3
 description: Professional finance research toolkit — backtesting (12 engines + benchmark comparison panel), factor analysis, Alpha Zoo (478 pre-built alphas across qlib158/alpha101/gtja191/academic/fundamental), options pricing, 89 finance skills, 30 multi-agent swarm teams, Trade Journal analyzer, and Shadow Account (extract → backtest → render) across 28 market-data sources (tushare, yfinance, okx, binance, akshare, baostock, tencent, mootdx, ccxt, futu, mt5, tickerall, local, eastmoney, sina, stooq, yahoo, pykrx, india_broker, longbridge, nobitex, wallex, plus optional-key finnhub/alphavantage/tiingo/fmp/gildata).
 dependencies:
   python: ">=3.11"
@@ -133,7 +133,7 @@ Comprehensive knowledge base covering:
 
 Use `load_skill(name)` to access full methodology docs with code templates.
 
-## Available MCP Tools (81)
+## Available MCP Tools (83)
 
 | Tool | Description | API Key |
 |------|-------------|---------|
@@ -208,6 +208,8 @@ Use `load_skill(name)` to access full methodology docs with code templates.
 | `trading_orders` | Read open orders from selected connector | Connector app/OAuth |
 | `trading_quote` | Read a quote snapshot from selected connector | Connector app/OAuth |
 | `trading_history` | Read historical bars from selected connector | Connector app/OAuth |
+| `trading_inventory` | IBKR official MCP account inventory / fail-closed allowlist | Connector OAuth |
+| `trading_read` | Raw-read one allowlisted IBKR official MCP tool | Connector OAuth |
 | `get_institutional_holdings` | SEC 13F-HR holdings by manager/ticker + quarter-over-quarter position diffs | None |
 | `etf_holdings` | ETF look-through — SEC N-PORT (US) and full-book A-share fund reports | None |
 | `prediction_market` | Event-contract search/market/history as labelled implied probability | None |

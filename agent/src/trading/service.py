@@ -321,7 +321,15 @@ def get_open_orders(
                 include_executions=include_executions,
             ),
         )
-    return _call_remote(profile, "orders", _account_arg(overrides))
+    arguments = _account_arg(overrides)
+    if include_executions:
+        arguments["include_executions"] = True
+    return _call_remote(
+        profile,
+        "orders",
+        arguments,
+        interactive_oauth=bool(overrides.get("interactive_oauth", True)),
+    )
 
 
 def get_quote(
@@ -1513,37 +1521,140 @@ def _account_arg(overrides: dict[str, Any]) -> dict[str, Any]:
     return {"account_number": account} if account else {}
 
 
-def _call_remote(
+def describe_ibkr_official_mcp_catalog() -> dict[str, Any]:
+    """Return the fail-closed IBKR official MCP read catalog without calling IBKR."""
+    from src.trading.connectors.ibkr.official_mcp_catalog import (
+        ACCOUNT_INVENTORY_READS,
+        EXCLUDED_READONLY_REMOTE_TOOLS,
+        annotated_readonly_remote_tools,
+        mutating_remote_tools,
+        readonly_remote_tools,
+    )
+
+    return {
+        "status": "ok",
+        "readonly_tools": sorted(readonly_remote_tools()),
+        "account_inventory": [
+            {"tool": name, "arguments": dict(arguments)}
+            for name, arguments in ACCOUNT_INVENTORY_READS
+        ],
+        "excluded_readonly_tools": sorted(EXCLUDED_READONLY_REMOTE_TOOLS),
+        "mutating_tools": sorted(mutating_remote_tools()),
+        "annotated_readonly_tools": sorted(annotated_readonly_remote_tools()),
+    }
+
+
+def read_ibkr_official_mcp_tool(
+    remote_name: str,
+    profile_id: str | None = None,
+    arguments: dict[str, Any] | None = None,
+    **overrides: Any,
+) -> dict[str, Any]:
+    """Call one allowlisted IBKR official MCP read with schema-checked arguments.
+
+    This never places, previews, or drafts orders. Unknown names, mutations,
+    and excluded order helpers are refused before the MCP client is opened.
+
+    Args:
+        remote_name: Official IBKR MCP tool name.
+        profile_id: Connector profile. Defaults to the selected profile.
+        arguments: JSON object matching the tool's input schema.
+        **overrides: ``interactive_oauth=False`` keeps a missing grant from
+            opening a browser.
+
+    Returns:
+        The remote envelope with profile metadata, or an error payload.
+    """
+    from src.trading.connectors.ibkr.oauth import IBKROAuthScopeError, assert_ibkr_readonly_remote_tool
+    from src.trading.connectors.ibkr.official_mcp_catalog import validate_readonly_arguments
+
+    profile = profile_by_id(profile_id)
+    if profile.connector != "ibkr" or profile.transport != "remote_mcp":
+        return _unsupported(profile, "ibkr.official_mcp.read")
+    try:
+        assert_ibkr_readonly_remote_tool(remote_name)
+        payload = validate_readonly_arguments(remote_name, arguments)
+    except IBKROAuthScopeError as exc:
+        return _with_profile(profile, {"status": "error", "error": str(exc), "error_type": "IBKROAuthScopeError"})
+    except ValueError as exc:
+        return _with_profile(profile, {"status": "error", "error": str(exc), "error_type": "ValueError"})
+    return _invoke_remote_named_tool(
+        profile,
+        remote_name,
+        payload,
+        interactive_oauth=bool(overrides.get("interactive_oauth", True)),
+    )
+
+
+def read_ibkr_official_mcp_inventory(
+    profile_id: str | None = None,
+    **overrides: Any,
+) -> dict[str, Any]:
+    """Read the documented IBKR account inventory tools with schema defaults.
+
+    Calls the zero-id account reads (balances, trades ``DAYS_7``, orders with
+    ``show_completed``, flow type, PA, watchlists, alerts, screeners,
+    instructions). Market-data tools that require a contract id stay on
+    :func:`read_ibkr_official_mcp_tool`.
+    """
+    from src.trading.connectors.ibkr.official_mcp_catalog import ACCOUNT_INVENTORY_READS
+
+    profile = profile_by_id(profile_id)
+    if profile.connector != "ibkr" or profile.transport != "remote_mcp":
+        return _unsupported(profile, "ibkr.official_mcp.inventory")
+    interactive_oauth = bool(overrides.get("interactive_oauth", True))
+    results: dict[str, Any] = {}
+    failed: list[str] = []
+    for remote_name, arguments in ACCOUNT_INVENTORY_READS:
+        envelope = read_ibkr_official_mcp_tool(
+            remote_name,
+            profile.id,
+            arguments,
+            interactive_oauth=interactive_oauth,
+        )
+        results[remote_name] = envelope
+        if envelope.get("status") not in {"ok", "success"}:
+            failed.append(remote_name)
+            if envelope.get("status") == "not_authorized":
+                return envelope
+    status = "ok" if not failed else "error"
+    return _with_profile(
+        profile,
+        {
+            "status": status,
+            "inventory": results,
+            "failed": failed,
+            "called": [name for name, _ in ACCOUNT_INVENTORY_READS],
+        },
+    )
+
+
+def _invoke_remote_named_tool(
     profile: TradingProfile,
-    operation: str,
+    remote_name: str,
     arguments: dict[str, Any],
     *,
     interactive_oauth: bool = True,
 ) -> dict[str, Any]:
-    """Call a known read operation on a remote MCP connector profile.
+    """Call a remote MCP tool by official name after config/token checks."""
+    session = _remote_mcp_session(profile, remote_name, interactive_oauth=interactive_oauth)
+    if session.get("status") != "ready":
+        return session
+    adapter = session["adapter"]
+    call_result = adapter.call_tool(remote_name, dict(arguments))
+    return _with_profile(profile, call_result)
 
-    Args:
-        profile: Connector profile whose ``transport`` is a remote MCP server.
-        operation: Logical read operation ("account", "positions", "orders",
-            "quote"); mapped to a connector-specific remote tool name.
-        arguments: Logical arguments for the operation, before the
-            connector-specific wire mapping is applied.
-        interactive_oauth: When False, an expired or missing OAuth grant raises
-            instead of opening a browser on the host. Callers that run without a
-            user in front of them (API handlers, schedulers, portfolio refresh)
-            pass False.
 
-    Returns:
-        The remote tool envelope with profile metadata attached, or an error /
-        ``not_authorized`` envelope when the profile cannot be called.
-    """
+def _remote_mcp_session(
+    profile: TradingProfile,
+    remote_name: str,
+    *,
+    interactive_oauth: bool = True,
+) -> dict[str, Any]:
+    """Return a ready MCP adapter session or a config/auth error envelope."""
     from src.config.loader import load_agent_config
     from src.live.registry import has_cached_oauth_token
     from src.tools.mcp import MCPServerAdapter
-
-    remote_name = _remote_tool_name(profile.connector, operation)
-    if remote_name is None:
-        return _unsupported(profile, f"{operation}.read")
 
     server_name = str(profile.config.get("server") or profile.connector)
     server = (load_agent_config().mcp_servers or {}).get(server_name)
@@ -1592,13 +1703,52 @@ def _call_remote(
             ),
         }
 
-    # The interactive default is left implicit so the common path keeps the
-    # two-positional-argument construction that adapter substitutes rely on.
     adapter = (
         MCPServerAdapter(server_name, server)
         if interactive_oauth
         else MCPServerAdapter(server_name, server, interactive_oauth=False)
     )
+    return {
+        "status": "ready",
+        "profile_id": profile.id,
+        "server_name": server_name,
+        "server": server,
+        "adapter": adapter,
+    }
+
+
+def _call_remote(
+    profile: TradingProfile,
+    operation: str,
+    arguments: dict[str, Any],
+    *,
+    interactive_oauth: bool = True,
+) -> dict[str, Any]:
+    """Call a known read operation on a remote MCP connector profile.
+
+    Args:
+        profile: Connector profile whose ``transport`` is a remote MCP server.
+        operation: Logical read operation ("account", "positions", "orders",
+            "quote"); mapped to a connector-specific remote tool name.
+        arguments: Logical arguments for the operation, before the
+            connector-specific wire mapping is applied.
+        interactive_oauth: When False, an expired or missing OAuth grant raises
+            instead of opening a browser on the host. Callers that run without a
+            user in front of them (API handlers, schedulers, portfolio refresh)
+            pass False.
+
+    Returns:
+        The remote tool envelope with profile metadata attached, or an error /
+        ``not_authorized`` envelope when the profile cannot be called.
+    """
+    remote_name = _remote_tool_name(profile.connector, operation)
+    if remote_name is None:
+        return _unsupported(profile, f"{operation}.read")
+
+    session = _remote_mcp_session(profile, remote_name, interactive_oauth=interactive_oauth)
+    if session.get("status") != "ready":
+        return session
+    adapter = session["adapter"]
     call_result = adapter.call_tool(remote_name, _remote_arguments(profile.connector, operation, arguments))
     call_result = _complete_paginated_reply(
         profile.connector, operation, call_result, adapter, remote_name, arguments
