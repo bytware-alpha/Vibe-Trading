@@ -1,0 +1,26 @@
+[project]
+name = "ibkr-gw-trade"
+version = "0.1.0"
+description = "Local IB Gateway limit orders with a confirm hash, SMA gate, and kill switch"
+requires-python = ">=3.11"
+dependencies = [
+    "ib_async>=2.0",
+]
+
+[project.scripts]
+ibkr-gw-trade = "ibkr_gw_trade.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
