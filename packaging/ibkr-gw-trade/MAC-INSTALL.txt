@@ -1,0 +1,109 @@
+ibkr-gw-trade on the Mac
+========================
+
+This talks only to IB Gateway on 127.0.0.1:4001. It does not use the official
+IBKR MCP. That MCP path cannot place orders for margin account U23708642.
+
+The dry-run below is a what-if. It does not submit an order. Leave "enabled"
+false. Do not run a submit command for this preview.
+
+1. Stop the old bridge
+
+The process listening on port 4472 is using clientId 17. Stop it before
+starting this one.
+
+    lsof -nP -iTCP:4472 -sTCP:LISTEN
+
+2. Install into the existing venv
+
+Copy this folder to the Mac, then:
+
+    source ~/ibkr-bridge/venv/bin/activate
+    python -m pip install --upgrade "./ibkr_gw_trade-0.1.0-py3-none-any.whl"
+    python -c "import ib_async, ibkr_gw_trade; print(ibkr_gw_trade.__version__)"
+
+Check the wheel before installing:
+
+    shasum -a 256 ibkr_gw_trade-0.1.0-py3-none-any.whl
+
+WHEEL_SHA256=605558389f21bb277336ffc1fb51840c069d6994fdfc2c5b69126b63a01c941e
+
+3. Config
+
+    ibkr-gw-trade init
+
+That writes ~/.ibkr-gw-trade/config.json once, with "enabled": false,
+host 127.0.0.1, port 4001, account U23708642, read_client_id 17,
+trade_client_id 18, sma_buffer 1000, bridge 0.0.0.0:4472. init will not
+overwrite the file later. Trading stays off until you edit "enabled" to true.
+
+4. Dry-run preview (no submit)
+
+Gateway must be logged into U23708642, API port 4001, Read-Only API unchecked.
+You hold 1 share of FIG. This sell limit is far above the share, so it would
+rest and not fill. A low sell limit would be marketable; do not use one.
+The printed SMA impact uses this limit (50% of 9999), not the live price.
+
+    ibkr-gw-trade preview --symbol FIG --sec-type STK --side SELL --qty 1 --limit 9999 --tif DAY
+
+You should see PREVIEW ONLY, conId, localSymbol, LIMIT 9999, estimated
+commission, init and maint margin before and after, equity, SMA,
+ExcessLiquidity, AvailableFunds, and the projected SMA, ExcessLiquidity,
+and AvailableFunds. The last line is "confirm withheld" because trading
+is disabled. No order is placed.
+
+If it says close_qty, this session does not see the long FIG share. Do not
+raise the quantity.
+
+5. Bridge
+
+Replace the old file, or run the console script. Same server either way.
+
+    cp -n ~/ibkr-bridge/bridge.py ~/ibkr-bridge/bridge.py.bak-2026-11-09
+    cp bridge.py ~/ibkr-bridge/bridge.py
+    python ~/ibkr-bridge/bridge.py
+
+Or, after the wheel install:
+
+    ibkr-gw-trade bridge
+
+GET /status /summary /positions /orders /trades are open on 0.0.0.0:4472.
+Anything that can reach that port can read balances, positions, and orders.
+Firewall 4472 if the Mac is not on a trusted network.
+
+POST /preview and POST /submit require:
+
+    Authorization: Bearer <token>
+
+The token is created on first start at ~/.ibkr-gw-trade/bridge.token mode
+0600. The process prints the path and does not print the token. Restart the
+bridge after you replace that file.
+
+Reads use clientId 17 readonly. Preview and submit use clientId 18 and are
+the only calls with readonly false.
+
+6. A real order, later
+
+Set "enabled" to true only when you intend to trade. Preview the real LIMIT
+(DAY or GTC). Read the margin, SMA, ExcessLiquidity, and AvailableFunds.
+Within 120 seconds, submit that one hash with the submit command and its
+--confirm flag. A newer preview retires the previous unused hash. The hash
+is single-use. There is no batch command and no market or stop order.
+
+Buys and other opening orders are refused when SMA is missing or the
+projected SMA is below sma_buffer (default 1000 USD). Any order is refused
+when projected ExcessLiquidity or AvailableFunds would be negative. A sell
+can close only the long quantity held. Shorts and naked options are refused.
+
+SMA impact, from the limit you enter:
+
+- opening long option: minus 100% of the debit (limit x qty x multiplier)
+- stock buy: minus 50% of the value (limit x qty)
+- selling a long option: plus 100% of the credit
+- stock sell: plus 50% of the value
+
+Commission is shown and is not part of that SMA figure.
+
+Every preview, submit, order status, and fill is appended to
+~/.ibkr-gw-trade/audit.jsonl. That file has no bearer token and no full
+confirm hash.
