@@ -338,27 +338,32 @@ def assert_ibkr_authorization_url_matches_configured(
         )
 
 
-def assert_ibkr_readonly_remote_tool(remote_name: str) -> None:
-    """Refuse IBKR MCP tool calls that are not on the fail-closed read allowlist.
+def assert_ibkr_readonly_remote_tool(
+    remote_name: str,
+    *,
+    order_trading: bool = False,
+    granted_scopes: Sequence[str] | object = (),
+) -> None:
+    """Refuse IBKR MCP tool calls that are not vetted reads or an armed order.
 
-    Local ``trading_*`` exposure is not enough: a widened grant must still not
-    be able to invoke write/order tools through the MCP adapter. Unknown names
-    and excluded order helpers (preview / combo construction) are denied even
-    when IBKR annotated them read-only.
+    Live-order tools stay off unless ``order_trading`` is true and
+    ``granted_scopes`` includes ``mcp.orders.submit``. Requested scopes are
+    not enough: the cached grant is what counts. Alerts, watchlists,
+    screeners, instructions, feedback, and ``modify_order`` stay blocked.
 
     Args:
         remote_name: Remote IBKR MCP tool name.
+        order_trading: Local ``orderTrading`` flag. Default false.
+        granted_scopes: Scopes on the cached token.
 
     Raises:
-        IBKROAuthScopeError: If ``remote_name`` is not a verified read tool.
+        IBKROAuthScopeError: If ``remote_name`` is not allowed.
     """
-    from src.trading.connectors.ibkr.mcp import readonly_remote_tools
+    from src.trading.connectors.ibkr.order_gate import assert_ibkr_remote_tool
 
-    if remote_name not in readonly_remote_tools():
-        raise IBKROAuthScopeError(
-            "IBKR official MCP is fail-closed read-only; refusing remote tool "
-            f"'{remote_name}'"
-        )
+    assert_ibkr_remote_tool(
+        remote_name, order_trading=order_trading, granted_scopes=granted_scopes
+    )
 
 
 def is_ibkr_mcp_host(hostname: str | None) -> bool:

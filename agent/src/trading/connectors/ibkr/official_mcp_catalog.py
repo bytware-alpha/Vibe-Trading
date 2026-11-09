@@ -20,15 +20,38 @@ from typing import Any, Mapping
 
 _INVENTORY_PATH = Path(__file__).with_name("official_mcp_tools.json")
 
-#: Annotated read-only tools that are still refused. ``preview_order`` is an
-#: order what-if tied to the submit sequence; ``preview_screener`` runs an
-#: unsaved screener; ``get_combo_identifier`` builds combo ids for
+#: Annotated read-only tools that stay off the inventory allowlist.
+#: ``preview_order`` and ``get_order_status`` are order-path tools: they are
+#: callable only through the default-off trading gate. ``preview_screener``
+#: runs an unsaved screener. ``get_combo_identifier`` builds combo ids for
 #: ``create_order_instruction``.
 EXCLUDED_READONLY_REMOTE_TOOLS: frozenset[str] = frozenset(
     {
         "preview_order",
+        "get_order_status",
         "preview_screener",
         "get_combo_identifier",
+    }
+)
+
+#: Live-order tools. Allowed only when ``orderTrading`` is true and the cached
+#: grant includes ``mcp.orders.submit``. ``modify_order`` and every
+#: instruction/alert/watchlist/screener/feedback tool stay blocked.
+IBKR_ORDER_TOOLS: frozenset[str] = frozenset(
+    {
+        "preview_order",
+        "submit_order",
+        "get_order_status",
+        "cancel_order",
+        "answer_order_question",
+    }
+)
+#: Tools that send or change a live order. They also require a one-time confirm hash.
+IBKR_ORDER_MUTATING_TOOLS: frozenset[str] = frozenset(
+    {
+        "submit_order",
+        "cancel_order",
+        "answer_order_question",
     }
 )
 

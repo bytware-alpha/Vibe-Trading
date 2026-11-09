@@ -874,7 +874,21 @@ class MCPServerAdapter:
             Exception: Propagates non-transient or exhausted failures.
         """
         if is_ibkr_mcp_host(urlparse(self.server_config.url).hostname):
-            assert_ibkr_readonly_remote_tool(remote_name)
+            from src.trading.connectors.ibkr.order_gate import (
+                CONFIRM_ARGUMENT,
+                read_cached_oauth_scopes,
+                require_confirm_for_call,
+            )
+
+            arguments = dict(arguments)
+            confirm = arguments.pop(CONFIRM_ARGUMENT, None)
+            cache_dir = None if self.server_config.auth is None else self.server_config.auth.cache_dir
+            assert_ibkr_readonly_remote_tool(
+                remote_name,
+                order_trading=bool(getattr(self.server_config, "order_trading", False)),
+                granted_scopes=read_cached_oauth_scopes(cache_dir),
+            )
+            require_confirm_for_call(remote_name, arguments, confirm if isinstance(confirm, str) else None)
 
         async def _invoke() -> CallToolResult:
             async with self._client_factory() as client:

@@ -679,7 +679,7 @@ def test_ibkr_adapter_refuses_write_tool_calls_without_touching_the_client(
     assert allowed["error_type"] == "AssertionError"
     preview = adapter.call_tool("preview_order", {"contract_id_ex": "1", "side": "BUY", "order_type": "MKT", "tif": "DAY"})
     assert preview["status"] == "error"
-    assert preview["error_type"] == "IBKROAuthScopeError"
+    assert preview["error_type"] == "IBKROrderGateError"
 
 
 def test_trading_authorize_url_uses_documented_scopes_without_metadata_extras(
@@ -755,7 +755,7 @@ def test_trading_adapter_still_refuses_order_tool_calls(tmp_path) -> None:
     assert payload["error_type"] == "IBKROAuthScopeError"
     submit = adapter.call_tool("submit_order", {})
     assert submit["status"] == "error"
-    assert submit["error_type"] == "IBKROAuthScopeError"
+    assert submit["error_type"] == "IBKROrderGateError"
     unknown = adapter.call_tool("not_a_real_tool", {})
     assert unknown["status"] == "error"
     assert unknown["error_type"] == "IBKROAuthScopeError"

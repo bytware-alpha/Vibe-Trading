@@ -135,7 +135,12 @@ def test_adapter_allows_safe_reads_and_denies_mutations_even_with_write_scopes(t
     allowed = readonly.call_tool("get_account_balances", {})
     assert allowed["status"] == "error"
     assert allowed["error_type"] == "AssertionError"
-    for name in ("submit_order", "preview_order", "create_order_instruction", "unknown_tool"):
+    for name in ("submit_order", "preview_order"):
+        payload = trading.call_tool(name, {})
+        assert payload["status"] == "error"
+        assert payload["error_type"] == "IBKROrderGateError"
+        assert name in payload["error"]
+    for name in ("create_order_instruction", "unknown_tool"):
         payload = trading.call_tool(name, {})
         assert payload["status"] == "error"
         assert payload["error_type"] == "IBKROAuthScopeError"

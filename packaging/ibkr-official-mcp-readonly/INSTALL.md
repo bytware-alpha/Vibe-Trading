@@ -45,7 +45,7 @@ python -m pip install --upgrade pip
 # 1) lockfile dependencies (hashed). 2) this wheel, no PyPI override of the app.
 python -m pip install --require-hashes -r constraints.txt
 python -m pip install --no-deps --no-index \
-  "./vibe_trading_ai-0.1.19.post3-py3-none-any.whl"
+  "./vibe_trading_ai-0.1.19.post4-py3-none-any.whl"
 ```
 
 If a previous honest wheel (`0.1.19` or `0.1.19.post1`) is already in this
@@ -53,14 +53,14 @@ venv, upgrade in place (no need to reinstall the hashed lock):
 
 ```bash
 python -m pip install --force-reinstall --no-deps --no-index \
-  "./vibe_trading_ai-0.1.19.post3-py3-none-any.whl"
+  "./vibe_trading_ai-0.1.19.post4-py3-none-any.whl"
 ```
 
 Confirm the patched client, not PyPI 0.1.19:
 
 ```bash
 python -c "from src.trading.connectors.ibkr.oauth import honest_user_agent; print(honest_user_agent())"
-# expect: Vibe-Trading/0.1.19.post3
+# expect: Vibe-Trading/0.1.19.post4
 python -c "from src.tools import mcp as m; assert 'Mozilla/5.0' not in open(m.__file__).read()"
 command -v vibe-trading
 command -v vibe-trading-mcp
@@ -151,6 +151,13 @@ vibe-trading connector inventory ibkr-live-official-mcp-readonly
 vibe-trading connector inventory ibkr-live-official-mcp-readonly \
   --tool get_account_trades --args '{"period":"DAYS_7"}'
 ```
+
+## Live orders (default off)
+
+`orderTrading` stays false in the seed. Live `preview_order` / `submit_order` /
+`cancel_order` / `get_order_status` / `answer_order_question` run only when that
+flag is true and the cached token includes `mcp.orders.submit`. The Mac steps,
+including a preview that does not submit, are in `UPGRADE-TRADING.txt`.
 
 ## Expose local tools to Grok Bot / other MCP clients
 

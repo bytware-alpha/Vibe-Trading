@@ -469,6 +469,8 @@ class MCPServerConfig(ConfigBase):
     tool_timeout: float = Field(default=30.0, ge=0.1)
     init_timeout: float | None = Field(default=None, ge=0.1)
     enabled_tools: list[str] = Field(default_factory=lambda: ["*"])
+    # Default off. IBKR live submit also requires a cached mcp.orders.submit grant.
+    order_trading: bool = False
 
     def resolved_transport(self) -> Literal["stdio", "sse", "streamableHttp"]:
         """Resolve the effective transport from explicit type or implied fields."""
@@ -534,6 +536,7 @@ class MCPServerConfigOverride(ConfigBase):
     tool_timeout: float | None = Field(default=None, ge=0.1)
     init_timeout: float | None = Field(default=None, ge=0.1)
     enabled_tools: list[str] | None = None
+    order_trading: bool | None = None
 
 
 class DeliveryTargetConfig(ConfigBase):
