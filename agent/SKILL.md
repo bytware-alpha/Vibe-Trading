@@ -1,6 +1,6 @@
 ---
 name: vibe-trading
-version: 0.1.19
+version: 0.1.19.post4
 description: Professional finance research toolkit — backtesting (12 engines + benchmark comparison panel), factor analysis, Alpha Zoo (478 pre-built alphas across qlib158/alpha101/gtja191/academic/fundamental), options pricing, 89 finance skills, 30 multi-agent swarm teams, Trade Journal analyzer, and Shadow Account (extract → backtest → render) across 28 market-data sources (tushare, yfinance, okx, binance, akshare, baostock, tencent, mootdx, ccxt, futu, mt5, tickerall, local, eastmoney, sina, stooq, yahoo, pykrx, india_broker, longbridge, nobitex, wallex, plus optional-key finnhub/alphavantage/tiingo/fmp/gildata).
 dependencies:
   python: ">=3.11"
@@ -133,7 +133,7 @@ Comprehensive knowledge base covering:
 
 Use `load_skill(name)` to access full methodology docs with code templates.
 
-## Available MCP Tools (81)
+## Available MCP Tools (83)
 
 | Tool | Description | API Key |
 |------|-------------|---------|
@@ -208,6 +208,8 @@ Use `load_skill(name)` to access full methodology docs with code templates.
 | `trading_orders` | Read open orders from selected connector | Connector app/OAuth |
 | `trading_quote` | Read a quote snapshot from selected connector | Connector app/OAuth |
 | `trading_history` | Read historical bars from selected connector | Connector app/OAuth |
+| `trading_inventory` | IBKR official MCP account inventory / fail-closed allowlist | Connector OAuth |
+| `trading_read` | Raw-read one allowlisted IBKR official MCP tool | Connector OAuth |
 | `get_institutional_holdings` | SEC 13F-HR holdings by manager/ticker + quarter-over-quarter position diffs | None |
 | `etf_holdings` | ETF look-through — SEC N-PORT (US) and full-book A-share fund reports | None |
 | `prediction_market` | Event-contract search/market/history as labelled implied probability | None |
@@ -264,11 +266,13 @@ Add Interactive Brokers' official MCP endpoint as a read-only external server:
     "ibkr": {
       "type": "streamableHttp",
       "url": "https://api.ibkr.com/v1/api/mcp-public",
+      "initTimeout": 300,
       "auth": {
         "type": "oauth",
         "scopes": ["mcp.read"],
         "clientName": "Vibe-Trading",
-        "cacheDir": "~/.vibe-trading/live/ibkr/oauth"
+        "cacheDir": "~/.vibe-trading/live/ibkr/oauth",
+        "callbackPort": 8765
       },
       "enabledTools": ["*"]
     }
@@ -276,12 +280,19 @@ Add Interactive Brokers' official MCP endpoint as a read-only external server:
 }
 ```
 
-Authorize it with `vibe-trading connector authorize ibkr-live-official-mcp-readonly`. The wildcard is accepted
-only for this `mcp.read` probe. Generic `trading_account` and `trading_positions`
-calls stay disabled until IBKR publishes stable read tool names that Vibe-Trading
-can map safely; `mcp.write` requires an explicit tool allowlist and live
-order-guard handling. If IBKR issues a pre-registered OAuth client, add
-`clientId` and `clientSecret` inside `auth`.
+Authorize read-only with `vibe-trading connector authorize ibkr-live-official-mcp-readonly`,
+or the explicit trading-capability seed with
+`vibe-trading connector authorize ibkr-live-official-mcp-trading`,
+on the account owner's machine (browser + `http://localhost:8765/callback`).
+The client is a public OAuth app (`token_endpoint_auth_method: none`, product
+User-Agent `Vibe-Trading/<version>`); it does not impersonate a browser. The
+wildcard is accepted only for this `mcp.read` probe. `mcp.write` requires an
+explicit tool allowlist and live order-guard handling. If IBKR issues a
+pre-registered OAuth client, add `clientId` and `clientSecret` inside `auth`.
+An HTML HTTP 403 from the public MCP URL is an access block, not an OAuth
+protocol error — do not retry it with a Mozilla User-Agent. Configured
+`mcp.read` is never widened by `scopes_supported`; authorize fails closed
+before the browser if a write/order scope would be requested.
 
 ### Official eToro Public API MCP (discovery + dev)
 

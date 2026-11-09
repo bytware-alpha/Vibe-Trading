@@ -6,18 +6,30 @@ import pytest
 
 from src.trading.connectors.ibkr.mcp import (
     normalize_result,
+    readonly_remote_tools,
     remote_arguments,
     remote_tool_name,
+)
+from src.trading.connectors.ibkr.official_mcp_catalog import (
+    ACCOUNT_INVENTORY_READS,
+    EXCLUDED_READONLY_REMOTE_TOOLS,
 )
 
 pytestmark = pytest.mark.unit
 
 
-def test_ibkr_remote_tools_map_only_verified_reads() -> None:
+def test_ibkr_remote_tools_map_verified_reads() -> None:
     assert remote_tool_name("account") == "get_account_summary"
     assert remote_tool_name("positions") == "get_account_positions"
-    assert remote_tool_name("orders") is None
+    assert remote_tool_name("orders") == "get_account_orders"
+    assert remote_tool_name("place_order") is None
+    allowed = readonly_remote_tools()
+    assert {"get_account_summary", "get_account_positions", "get_account_balances"} <= allowed
+    assert "submit_order" not in allowed
+    assert "preview_order" not in allowed
     assert remote_arguments("account", {"account_number": "ignored"}) == {}
+    assert remote_arguments("orders", {"include_executions": True}) == {"show_completed": True}
+    assert remote_arguments("orders", {}) == {}
 
 
 def test_ibkr_account_summary_normalizes_for_portfolio_totals() -> None:
@@ -75,3 +87,42 @@ def test_ibkr_positions_normalize_for_shared_position_reader() -> None:
             "sec_type": "STK",
         }
     ]
+
+
+def test_ibkr_orders_normalize_for_shared_order_reader() -> None:
+    result = normalize_result(
+        "orders",
+        {
+            "status": "ok",
+            "structured_content": {
+                "orders": [
+                    {
+                        "order_id": 9,
+                        "primary_description": "EXAMPLE",
+                        "side": "BUY",
+                        "order_type": "LMT",
+                        "total_shares_qty": "10",
+                        "limit_price": "1.25",
+                        "order_status": "Submitted",
+                    }
+                ]
+            },
+        },
+    )
+
+    assert result["open_orders"] == [
+        {
+            "order_id": 9,
+            "symbol": "EXAMPLE",
+            "action": "BUY",
+            "order": {"orderType": "LMT", "totalQuantity": "10", "lmtPrice": "1.25"},
+            "status": {"status": "Submitted"},
+        }
+    ]
+
+
+def test_account_inventory_reads_are_allowlisted() -> None:
+    allowed = readonly_remote_tools()
+    for name, _arguments in ACCOUNT_INVENTORY_READS:
+        assert name in allowed
+        assert name not in EXCLUDED_READONLY_REMOTE_TOOLS

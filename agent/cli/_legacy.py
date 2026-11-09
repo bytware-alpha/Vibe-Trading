@@ -3439,6 +3439,20 @@ def _print_missing_live_channel_config(key: str) -> None:
         console.print(format_robinhood_mcp_config_guidance(reason=reason), markup=False, soft_wrap=True)
         return
 
+    if key == "ibkr":
+        from src.config.schema import format_ibkr_mcp_server_seed_json
+
+        console.print("[red]IBKR official MCP is not configured.[/red]")
+        console.print(
+            "Add this read-only seed to ~/.vibe-trading/agent.json, then rerun "
+            "`vibe-trading connector authorize ibkr-live-official-mcp-readonly` "
+            "on the machine that can open a browser and bind localhost:8765:\n"
+            f"{format_ibkr_mcp_server_seed_json()}",
+            markup=False,
+            soft_wrap=True,
+        )
+        return
+
     console.print(
         f"[red]No live channel configured for '{key}'.[/red] "
         "Add the broker's mcpServers entry to ~/.vibe-trading/agent.json first."
@@ -5024,6 +5038,189 @@ def cmd_connector_positions(
     console.print(table)
     return EXIT_SUCCESS
 
+def cmd_connector_inventory(
+    profile_id: Optional[str] = None,
+    *,
+    list_only: bool = False,
+    tool: str | None = None,
+    args_json: str | None = None,
+) -> int:
+    """Print IBKR official MCP read catalog or run account inventory / raw-read."""
+    from src.trading.service import (
+        describe_ibkr_official_mcp_catalog,
+        read_ibkr_official_mcp_inventory,
+        read_ibkr_official_mcp_tool,
+    )
+
+    if list_only:
+        console.print_json(data=describe_ibkr_official_mcp_catalog())
+        return EXIT_SUCCESS
+    try:
+        if tool:
+            arguments: dict[str, Any] = {}
+            if args_json:
+                parsed = json.loads(args_json)
+                if not isinstance(parsed, dict):
+                    console.print("[red]--args must be a JSON object[/red]")
+                    return EXIT_USAGE_ERROR
+                arguments = parsed
+            result = read_ibkr_official_mcp_tool(tool, _profile_id(profile_id), arguments)
+        else:
+            result = read_ibkr_official_mcp_inventory(_profile_id(profile_id))
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Connector inventory failed:[/red] {exc}")
+        return EXIT_RUN_FAILED
+    if result.get("status") == "error":
+        console.print_json(data=result)
+        return EXIT_RUN_FAILED
+    if result.get("status") == "not_authorized":
+        console.print(f"[red]{rich_escape(str(result.get('error')))}[/red]")
+        return EXIT_RUN_FAILED
+    console.print_json(data=result)
+    return EXIT_SUCCESS
+
+
+def _print_order_result(result: dict[str, Any]) -> int:
+    console.print_json(data=result)
+    if result.get("status") in {"error", "refused"}:
+        return EXIT_RUN_FAILED
+    return EXIT_SUCCESS
+
+
+def _order_bindings(profile_id: str | None):
+    from src.trading.connectors.ibkr.orders import broker_bindings
+
+    return broker_bindings(_profile_id(profile_id))
+
+
+def cmd_connector_order_preview(args: argparse.Namespace) -> int:
+    """Preview one IBKR order. Does not submit."""
+    from src.trading.connectors.ibkr.oauth import IBKROAuthScopeError
+    from src.trading.connectors.ibkr.orders import run_preview
+
+    try:
+        call, enabled, scopes = _order_bindings(args.profile)
+        result = run_preview(
+            call,
+            contract_id_ex=args.contract_id_ex,
+            side=args.side,
+            qty=args.qty,
+            limit_price=args.limit_price,
+            tif=args.tif,
+            order_type=args.order_type,
+            is_position_close=args.close,
+            asset=args.asset,
+            allow_non_limit=args.allow_non_limit,
+            order_trading=enabled,
+            granted_scopes=sorted(scopes),
+        )
+    except IBKROAuthScopeError as exc:
+        console.print(f"[red]{rich_escape(str(exc))}[/red]")
+        return EXIT_RUN_FAILED
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Order preview failed:[/red] {exc}")
+        return EXIT_RUN_FAILED
+    return _print_order_result(result)
+
+
+def cmd_connector_order_submit(args: argparse.Namespace) -> int:
+    """Submit a previously previewed order. The confirm hash is single-use."""
+    from src.trading.connectors.ibkr.oauth import IBKROAuthScopeError
+    from src.trading.connectors.ibkr.orders import run_submit
+
+    try:
+        call, enabled, scopes = _order_bindings(args.profile)
+        result = run_submit(
+            call,
+            args.confirm,
+            order_trading=enabled,
+            granted_scopes=sorted(scopes),
+        )
+    except IBKROAuthScopeError as exc:
+        console.print(f"[red]{rich_escape(str(exc))}[/red]")
+        return EXIT_RUN_FAILED
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Order submit failed:[/red] {exc}")
+        return EXIT_RUN_FAILED
+    return _print_order_result(result)
+
+
+def cmd_connector_order_status(args: argparse.Namespace) -> int:
+    from src.trading.connectors.ibkr.oauth import IBKROAuthScopeError
+    from src.trading.connectors.ibkr.orders import run_status
+
+    try:
+        call, enabled, scopes = _order_bindings(args.profile)
+        result = run_status(
+            call, args.order_id, order_trading=enabled, granted_scopes=sorted(scopes)
+        )
+    except IBKROAuthScopeError as exc:
+        console.print(f"[red]{rich_escape(str(exc))}[/red]")
+        return EXIT_RUN_FAILED
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Order status failed:[/red] {exc}")
+        return EXIT_RUN_FAILED
+    return _print_order_result(result)
+
+
+def cmd_connector_order_cancel(args: argparse.Namespace) -> int:
+    from src.trading.connectors.ibkr.oauth import IBKROAuthScopeError
+    from src.trading.connectors.ibkr.orders import run_cancel, run_cancel_preview
+
+    try:
+        call, enabled, scopes = _order_bindings(args.profile)
+        if not args.confirm:
+            result = run_cancel_preview(args.order_id, order_trading=enabled, granted_scopes=sorted(scopes))
+        else:
+            result = run_cancel(
+                call,
+                args.order_id,
+                args.confirm,
+                order_trading=enabled,
+                granted_scopes=sorted(scopes),
+            )
+    except IBKROAuthScopeError as exc:
+        console.print(f"[red]{rich_escape(str(exc))}[/red]")
+        return EXIT_RUN_FAILED
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Order cancel failed:[/red] {exc}")
+        return EXIT_RUN_FAILED
+    return _print_order_result(result)
+
+
+def cmd_connector_order_answer(args: argparse.Namespace) -> int:
+    from src.trading.connectors.ibkr.oauth import IBKROAuthScopeError
+    from src.trading.connectors.ibkr.orders import prepare_answer_confirm, run_answer
+
+    try:
+        call, enabled, scopes = _order_bindings(args.profile)
+        if not args.confirm:
+            result = prepare_answer_confirm(
+                question_id=args.question_id,
+                value=args.value,
+                correlation_id=args.correlation_id,
+                order_trading=enabled,
+                granted_scopes=sorted(scopes),
+            )
+        else:
+            result = run_answer(
+                call,
+                question_id=args.question_id,
+                value=args.value,
+                correlation_id=args.correlation_id,
+                confirm=args.confirm,
+                order_trading=enabled,
+                granted_scopes=sorted(scopes),
+            )
+    except IBKROAuthScopeError as exc:
+        console.print(f"[red]{rich_escape(str(exc))}[/red]")
+        return EXIT_RUN_FAILED
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Order answer failed:[/red] {exc}")
+        return EXIT_RUN_FAILED
+    return _print_order_result(result)
+
+
 def cmd_connector_orders(
     profile_id: Optional[str] = None,
     *,
@@ -5389,6 +5586,23 @@ def _dispatch_connector(args: argparse.Namespace) -> int:
             account=args.account,
             **({"connection_id": args.connection_id} if getattr(args, "connection_id", None) else {}),
         )
+    if sub == "inventory":
+        return cmd_connector_inventory(
+            args.profile,
+            list_only=args.list_only,
+            tool=args.tool,
+            args_json=args.tool_args,
+        )
+    if sub == "order-preview":
+        return cmd_connector_order_preview(args)
+    if sub == "order-submit":
+        return cmd_connector_order_submit(args)
+    if sub == "order-status":
+        return cmd_connector_order_status(args)
+    if sub == "order-cancel":
+        return cmd_connector_order_cancel(args)
+    if sub == "order-answer":
+        return cmd_connector_order_answer(args)
     if sub == "orders":
         return cmd_connector_orders(
             args.profile,
@@ -5730,6 +5944,79 @@ def _build_parser() -> argparse.ArgumentParser:
 
     connector_authorize = connector_subparsers.add_parser("authorize", help="Authorize a remote MCP connector profile")
     _add_connector_profile_arg(connector_authorize)
+
+    connector_inventory = connector_subparsers.add_parser(
+        "inventory",
+        help="Read IBKR official MCP account inventory or one allowlisted tool",
+    )
+    _add_connector_profile_arg(connector_inventory)
+    connector_inventory.add_argument(
+        "--list",
+        dest="list_only",
+        action="store_true",
+        help="Print the fail-closed read allowlist without calling IBKR",
+    )
+    connector_inventory.add_argument(
+        "--tool",
+        default=None,
+        help="Raw-read one allowlisted official MCP tool instead of the account batch",
+    )
+    connector_inventory.add_argument(
+        "--args",
+        dest="tool_args",
+        default=None,
+        help='JSON object of schema-supported arguments for --tool, e.g. \'{"period":"DAYS_7"}\'',
+    )
+
+    def _add_order_profile(parser: argparse.ArgumentParser) -> None:
+        _add_connector_profile_arg(parser)
+
+    order_preview = connector_subparsers.add_parser(
+        "order-preview",
+        help="Preview one IBKR live order. Does not submit. Requires orderTrading and mcp.orders.submit.",
+    )
+    _add_order_profile(order_preview)
+    order_preview.add_argument("--contract-id-ex", dest="contract_id_ex", required=True)
+    order_preview.add_argument("--side", required=True, choices=["BUY", "SELL", "buy", "sell"])
+    order_preview.add_argument("--qty", type=float, required=True)
+    order_preview.add_argument("--limit", dest="limit_price", type=float, default=None)
+    order_preview.add_argument("--tif", default="DAY")
+    order_preview.add_argument("--order-type", dest="order_type", default="LIMIT")
+    order_preview.add_argument("--asset", default="OPT", choices=["OPT", "STK"])
+    order_preview.add_argument("--close", action="store_true", help="Sell-to-close or otherwise reducing an existing long.")
+    order_preview.add_argument("--allow-non-limit", dest="allow_non_limit", action="store_true")
+
+    order_submit = connector_subparsers.add_parser(
+        "order-submit",
+        help="Submit a previewed IBKR order. The confirm hash is single-use.",
+    )
+    _add_order_profile(order_submit)
+    order_submit.add_argument("--confirm", required=True)
+
+    order_status = connector_subparsers.add_parser(
+        "order-status",
+        help="Read one IBKR live order. Requires orderTrading and mcp.orders.submit.",
+    )
+    _add_order_profile(order_status)
+    order_status.add_argument("--order-id", dest="order_id", required=True)
+
+    order_cancel = connector_subparsers.add_parser(
+        "order-cancel",
+        help="Preview or send an IBKR cancel. Omit --confirm to print the hash only.",
+    )
+    _add_order_profile(order_cancel)
+    order_cancel.add_argument("--order-id", dest="order_id", required=True)
+    order_cancel.add_argument("--confirm", default=None)
+
+    order_answer = connector_subparsers.add_parser(
+        "order-answer",
+        help="Preview or send one IBKR order question answer. Omit --confirm to print the hash only.",
+    )
+    _add_order_profile(order_answer)
+    order_answer.add_argument("--question-id", dest="question_id", required=True)
+    order_answer.add_argument("--value", required=True)
+    order_answer.add_argument("--correlation-id", dest="correlation_id", required=True)
+    order_answer.add_argument("--confirm", default=None)
 
     connector_account = connector_subparsers.add_parser("account", help="Read account summary")
     _add_connector_profile_arg(connector_account)

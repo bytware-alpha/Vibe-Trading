@@ -174,6 +174,8 @@ def test_mcp_server_exposes_well_known_tool_names() -> None:
         "trading_orders",
         "trading_quote",
         "trading_history",
+        "trading_inventory",
+        "trading_read",
     }
     missing = expected - registered
     assert not missing, (
@@ -258,12 +260,16 @@ def test_trading_mcp_wrappers_do_not_send_implicit_local_overrides(monkeypatch: 
     mod.trading_account()
     mod.trading_positions()
     mod.trading_orders()
+    mod.trading_inventory()
+    mod.trading_read(tool="get_account_balances")
 
     assert registry.calls == [
         ("trading_check", {}),
         ("trading_account", {}),
         ("trading_positions", {}),
         ("trading_orders", {"include_executions": False}),
+        ("trading_inventory", {"list_only": False}),
+        ("trading_read", {"tool": "get_account_balances"}),
     ]
 
 

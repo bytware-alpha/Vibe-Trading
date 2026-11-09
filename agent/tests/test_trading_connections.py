@@ -55,6 +55,9 @@ def test_ibkr_official_profile_advertises_verified_portfolio_reads(
 ) -> None:
     """The real-account-verified IBKR tools back the shared read interface."""
     profile = profiles.profile_by_id("ibkr-live-official-mcp-readonly")
+    trading = profiles.profile_by_id("ibkr-live-official-mcp-trading")
+    assert trading.readonly is True
+    assert trading.transport == "remote_mcp"
     calls: list[tuple[str, dict]] = []
     server = SimpleNamespace(
         url="https://api.ibkr.com/v1/api/mcp-public",
@@ -85,7 +88,7 @@ def test_ibkr_official_profile_advertises_verified_portfolio_reads(
     monkeypatch.setattr("src.live.registry.has_cached_oauth_token", lambda *_: True)
     monkeypatch.setattr("src.tools.mcp.MCPServerAdapter", _Adapter)
 
-    assert profile.capabilities == ("account.read", "positions.read")
+    assert profile.capabilities == ("account.read", "positions.read", "orders.read")
     assert service.get_account(profile.id)["summary"][0]["tag"] == "NetLiquidation"
     assert service.get_positions(profile.id)["positions"] == []
     assert calls == [

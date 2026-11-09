@@ -1,6 +1,6 @@
 [project]
 name = "vibe-trading-ai"
-version = "0.1.19"
+version = "0.1.19.post4"
 description = "Natural-language finance research AI agent with backtesting"
 requires-python = ">=3.11"
 license = "MIT"
@@ -104,6 +104,10 @@ Documentation = "https://vibetrading.wiki/docs/"
 Repository = "https://github.com/HKUDS/Vibe-Trading"
 Issues = "https://github.com/HKUDS/Vibe-Trading/issues"
 
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project.scripts]
 vibe-trading = "cli:main"
 vibe-trading-mcp = "mcp_server:main"
@@ -135,6 +139,7 @@ include = ["src*", "backtest*", "cli*", "evals*"]
     "shadow_account/assets/*.ttf",
     "shadow_account/assets/*.txt",
     "shadow_account/assets/*.md",
+    "trading/connectors/ibkr/*.json",
 ]
 "evals.harness" = ["README.md", "cases/**/*.json"]
 "backtest" = ["*.py", "loaders/*.json"]

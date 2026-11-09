@@ -24,13 +24,14 @@ from src.trading.service import (
     cancel_order,
     check_connection,
     close_position,
+    describe_ibkr_official_mcp_catalog,
     edit_position_stops,
     etoro_copy_close,
     etoro_copy_poll,
     etoro_copy_precheck,
     etoro_copy_start,
-    get_account,
     get_acc_cash_flow,
+    get_account,
     get_capital_distribution,
     get_capital_flow,
     get_earnings_calendar,
@@ -42,6 +43,8 @@ from src.trading.service import (
     get_quote,
     get_rehab,
     place_order,
+    read_ibkr_official_mcp_inventory,
+    read_ibkr_official_mcp_tool,
     search_instruments,
 )
 
@@ -456,6 +459,94 @@ class TradingHistoryTool(BaseTool):
                     use_rth=boolean_argument(kwargs.get("use_rth", True), field="use_rth"),
                     period=str(kwargs.get("period") or "1d"),
                     limit=int(kwargs.get("limit") or 90),
+                    **_overrides(kwargs),
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            return _json_result({"status": "error", "error": str(exc)})
+
+
+class TradingInventoryTool(BaseTool):
+    """Read IBKR official MCP account inventory or list the fail-closed allowlist."""
+
+    name = "trading_inventory"
+    description = (
+        "Read the IBKR official MCP account inventory (balances, trades DAYS_7, "
+        "orders including completed, flow type, portfolio analyst, watchlists, "
+        "alerts, saved screeners, order instructions). Pass list_only to print "
+        "the fail-closed read allowlist without calling IBKR. Read-only; never "
+        "places or previews orders."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            **TRADING_COMMON_PARAMETERS,
+            "list_only": {
+                "type": "boolean",
+                "default": False,
+                "description": "If true, return the allowlist without calling IBKR.",
+            },
+        },
+        "required": [],
+    }
+    repeatable = True
+    is_readonly = True
+
+    def execute(self, **kwargs: Any) -> str:
+        """Read IBKR account inventory or the local allowlist."""
+        try:
+            if boolean_argument(kwargs.get("list_only", False), field="list_only"):
+                return _json_result(describe_ibkr_official_mcp_catalog())
+            return _json_result(
+                read_ibkr_official_mcp_inventory(
+                    _connection(kwargs.get("connection")),
+                    **_overrides(kwargs),
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            return _json_result({"status": "error", "error": str(exc)})
+
+
+class TradingReadTool(BaseTool):
+    """Raw-read one allowlisted IBKR official MCP tool."""
+
+    name = "trading_read"
+    description = (
+        "Call one fail-closed IBKR official MCP read tool by name with "
+        "schema-supported arguments. Mutations, previews, combo construction, "
+        "and unknown names are refused."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            **TRADING_COMMON_PARAMETERS,
+            "tool": {
+                "type": "string",
+                "description": "Official IBKR MCP tool name, e.g. get_account_balances.",
+            },
+            "arguments": {
+                "type": "object",
+                "description": "JSON object matching the tool's input schema. Default empty.",
+            },
+        },
+        "required": ["tool"],
+    }
+    repeatable = True
+    is_readonly = True
+
+    def execute(self, **kwargs: Any) -> str:
+        """Raw-read one allowlisted IBKR official MCP tool."""
+        try:
+            raw_arguments = kwargs.get("arguments") or {}
+            if isinstance(raw_arguments, str):
+                raw_arguments = json.loads(raw_arguments)
+            if not isinstance(raw_arguments, dict):
+                return _json_result({"status": "error", "error": "arguments must be a JSON object"})
+            return _json_result(
+                read_ibkr_official_mcp_tool(
+                    str(kwargs["tool"]),
+                    _connection(kwargs.get("connection")),
+                    raw_arguments,
                     **_overrides(kwargs),
                 )
             )

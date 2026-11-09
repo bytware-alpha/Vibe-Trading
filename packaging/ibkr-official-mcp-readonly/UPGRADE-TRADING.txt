@@ -1,0 +1,121 @@
+IBKR official MCP live-order path (vibe-trading-ai 0.1.19.post4)
+Default is OFF. This file does not place, preview, or cancel anything.
+Do these steps on the Mac that holds the browser and the token cache.
+Do not run them in a cloud VM.
+
+Wheel
+  vibe_trading_ai-0.1.19.post4-py3-none-any.whl
+  sha256: 169721fb29f110dc37bdd62d9fadccf5d723aa58a22a963a9cf930713fe82117
+
+1. Install this wheel into the existing venv. Do not reinstall the hashed
+   lock unless the venv is missing packages.
+
+   /workspace/brokerage-apis/ibkr/honest-mcp/venv/bin/python -m pip install \
+     --force-reinstall --no-deps --no-index \
+     "./vibe_trading_ai-0.1.19.post4-py3-none-any.whl"
+
+   /workspace/brokerage-apis/ibkr/honest-mcp/venv/bin/python -c \
+     "from src.trading.connectors.ibkr.oauth import honest_user_agent; print(honest_user_agent())"
+   # expect: Vibe-Trading/0.1.19.post4
+
+2. On IBKR's side, before re-authorize (you do this; this client does not):
+   Standard AI Integration is Review & Approve. That grant is mcp.read and
+   mcp.write. It cannot call submit_order. Live submit needs Autonomous
+   Trading and a new consent that includes mcp.orders.submit.
+   Eligibility, the AI Partition, and the fact that positions cannot be
+   transferred into that partition are on
+   https://www.interactivebrokers.com/en/trading/ai-integrations.php
+   If the AMD Jan 2028 350 call sits in the parent account, this path cannot
+   see it as a held long and will refuse the sell. Close that contract in
+   IBKR's own order ticket, or with Review & Submit on an AI Instruction
+   (IBKR Desktop: Portfolio > AI Instructions). This client does not send
+   create_order_instruction.
+
+3. Re-authorize only after IBKR shows Autonomous Trading is on for an
+   eligible account. Use a new cache so the old read/write token is not reused.
+
+   Edit ~/.vibe-trading/agent.json. Keep the trading scopes. Add
+   "orderTrading": true on the ibkr server object. Leave it false until you
+   intend to preview.
+
+   {
+     "mcpServers": {
+       "ibkr": {
+         "type": "streamableHttp",
+         "url": "https://api.ibkr.com/v1/api/mcp-public",
+         "initTimeout": 300,
+         "orderTrading": true,
+         "auth": {
+           "type": "oauth",
+           "scopes": ["mcp.read", "mcp.write", "mcp.orders.submit"],
+           "clientName": "Vibe-Trading",
+           "cacheDir": "~/.vibe-trading/live/ibkr/oauth-trading",
+           "callbackPort": 8765
+         },
+         "enabledTools": ["*"]
+       }
+     }
+   }
+
+   source /workspace/brokerage-apis/ibkr/honest-mcp/venv/bin/activate
+   # Free port 8765 if a previous authorize is still listening.
+   vibe-trading connector use ibkr-live-official-mcp-trading
+   vibe-trading connector authorize ibkr-live-official-mcp-trading
+
+   The browser is IBKR's page. The authorize URL must contain
+   scope=mcp.read+mcp.write+mcp.orders.submit and nothing else.
+   If the consent screen lets you drop a scope, do not drop
+   mcp.orders.submit. If IBKR's page only offers Review & Approve,
+   stop. The token will come back without mcp.orders.submit and every
+   order command will refuse.
+
+4. Verify the cached grant. This prints scopes only, not the token.
+
+   python - <<'PY'
+   from src.trading.connectors.ibkr.order_gate import read_cached_oauth_scopes
+   print(sorted(read_cached_oauth_scopes("~/.vibe-trading/live/ibkr/oauth-trading")))
+   PY
+   # mcp.orders.submit must be in the list. mcp.read and mcp.write alone are not enough.
+
+   vibe-trading connector inventory ibkr-live-official-mcp-trading \
+     --tool get_flow_type
+   # Live submit also requires the result flow_type AUTONOMOUS.
+   # REVIEW_AND_APPROVE means stop. Do not preview.
+
+5. Dry-run preview of SELL 1 AMD Jan 21 2028 350 call, limit only.
+   Do not run order-submit.
+
+   Resolve the contract id from reads. Do not invent it.
+   Jan 21 2028 is the usual Friday for a "Jan28" equity-option expiry;
+   use the expiry get_option_parameters actually returns.
+
+   vibe-trading connector inventory ibkr-live-official-mcp-trading \
+     --tool search_contracts --args '{"query":"AMD"}'
+   # underlying_contract_id from that result, then:
+   vibe-trading connector inventory ibkr-live-official-mcp-trading \
+     --tool get_option_parameters --args '{"underlying_contract_id":UNDERLYING_ID}'
+   vibe-trading connector inventory ibkr-live-official-mcp-trading \
+     --tool get_option_data --args '{"expiration_id":"EXPIRATION_ID"}'
+   # Copy call_contract_id_ex for the 350 call. Then preview.
+   # You choose the limit. This client will not pick a price.
+
+   vibe-trading connector order-preview ibkr-live-official-mcp-trading \
+     --contract-id-ex 'CALL_CONTRACT_ID_EX' \
+     --side SELL --qty 1 --limit LIMIT_YOU_CHOOSE \
+     --order-type LIMIT --tif DAY --asset OPT --close
+
+   Expect status preview_only, submitted false, and a confirm_hash.
+   The output must say whether SMA was unverified.
+   A sell is allowed only when get_account_positions shows that contract
+   long and the qty is <= the held qty, and both ExcessLiquidity and
+   AvailableFunds are present. Opening orders are refused when SMA is absent.
+   preview_order's published fields are amount, commission, total, funds
+   (equity, not available funds), initial_margin, maintenance_margin,
+   position, warnings, errors. They do not include SMA.
+
+   Stop there. Do not run:
+   vibe-trading connector order-submit --confirm CONFIRM_HASH
+
+Audit log (no tokens): ~/.vibe-trading/live/ibkr/order-audit.jsonl
+Confirm files: ~/.vibe-trading/live/ibkr/confirms/
+A confirm hash expires after 120 seconds and cannot be submitted twice.

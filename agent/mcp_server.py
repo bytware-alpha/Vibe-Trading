@@ -6,7 +6,7 @@ Zero API key required for HK/US/crypto research markets (yfinance, OKX,
 AKShare are free). Trading connector tools are profile-scoped and require the
 selected connector's own local app or OAuth setup.
 
-Surfaces 81 tools: skills, research goals, strategy discovery,
+Surfaces 83 tools: skills, research goals, strategy discovery,
 backtest/factor/options/pattern
 analysis, deterministic paper-trading matching (paper_trade_step), market data, fundamentals & capital-flow & news & discovery
 (get_fund_flow / get_dragon_tiger / get_northbound_flow / get_southbound_flow /
@@ -1898,6 +1898,76 @@ def trading_history(
     )
     registry = _get_registry()
     return registry.execute("trading_history", params)
+
+
+@mcp.tool
+def trading_inventory(
+    connection: str | None = None,
+    connection_id: str | None = None,
+    host: str | None = None,
+    port: int | None = None,
+    client_id: int | None = None,
+    account: str | None = None,
+    list_only: bool = False,
+) -> str:
+    """Read IBKR official MCP account inventory, or list the fail-closed allowlist.
+
+    Default calls the documented account reads (balances, trades DAYS_7, orders
+    including completed, flow type, portfolio analyst, watchlists, alerts,
+    saved screeners, order instructions). Pass list_only to print the allowlist
+    without calling IBKR. This never places, previews, or drafts orders.
+
+    Args:
+        connection: Optional profile id. Defaults to the selected profile.
+        list_only: If true, return the allowlist without calling IBKR.
+    """
+    params = _trading_common_args(
+        connection=connection,
+        connection_id=connection_id,
+        host=host,
+        port=port,
+        client_id=client_id,
+        account=account,
+    )
+    params["list_only"] = list_only
+    registry = _get_registry()
+    return registry.execute("trading_inventory", params)
+
+
+@mcp.tool
+def trading_read(
+    tool: str,
+    arguments: _lenient_dict_any_opt = None,
+    connection: str | None = None,
+    connection_id: str | None = None,
+    host: str | None = None,
+    port: int | None = None,
+    client_id: int | None = None,
+    account: str | None = None,
+) -> str:
+    """Raw-read one allowlisted IBKR official MCP tool.
+
+    Mutations, order previews, combo construction, and unknown names are
+    refused even when the OAuth grant includes write scopes.
+
+    Args:
+        tool: Official IBKR MCP tool name, e.g. ``get_account_balances``.
+        arguments: Schema-supported JSON object. Default empty.
+        connection: Optional profile id. Defaults to the selected profile.
+    """
+    params = _trading_common_args(
+        connection=connection,
+        connection_id=connection_id,
+        host=host,
+        port=port,
+        client_id=client_id,
+        account=account,
+    )
+    params["tool"] = tool
+    if arguments:
+        params["arguments"] = arguments
+    registry = _get_registry()
+    return registry.execute("trading_read", params)
 
 
 # ---------------------------------------------------------------------------

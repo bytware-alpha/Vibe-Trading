@@ -179,7 +179,14 @@ vibe-trading run "use my-server to do X"
 ### Official IBKR MCP read-only probe
 
 Vibe-Trading can connect directly to Interactive Brokers' official remote MCP
-endpoint in read-only mode. Add this to `~/.vibe-trading/agent.json`:
+endpoint in read-only mode as a **public OAuth client** (no client secret,
+`token_endpoint_auth_method: none`, PKCE, loopback redirect). The client
+identifies itself as `Vibe-Trading/<version>`. It does not impersonate a
+browser User-Agent and does not send a spoofed `Origin`.
+
+Add this to `~/.vibe-trading/agent.json` (or install the wheel and copy
+`packaging/ibkr-official-mcp-readonly/agent.ibkr-readonly.json`; see that
+directory's `INSTALL.md` for a no-clone wheel install):
 
 ```json
 {
@@ -187,11 +194,13 @@ endpoint in read-only mode. Add this to `~/.vibe-trading/agent.json`:
     "ibkr": {
       "type": "streamableHttp",
       "url": "https://api.ibkr.com/v1/api/mcp-public",
+      "initTimeout": 300,
       "auth": {
         "type": "oauth",
         "scopes": ["mcp.read"],
         "clientName": "Vibe-Trading",
-        "cacheDir": "~/.vibe-trading/live/ibkr/oauth"
+        "cacheDir": "~/.vibe-trading/live/ibkr/oauth",
+        "callbackPort": 8765
       },
       "enabledTools": ["*"]
     }
@@ -199,20 +208,49 @@ endpoint in read-only mode. Add this to `~/.vibe-trading/agent.json`:
 }
 ```
 
-Then start the browser OAuth flow:
+Then start the browser OAuth flow **on the machine that owns the IBKR
+account** (this cannot be completed by a remote agent, and this repository
+does not collect brokerage credentials):
 
 ```bash
 vibe-trading connector authorize ibkr-live-official-mcp-readonly
 ```
 
+The authorize step must be able to open a browser, bind `http://localhost:8765/callback`,
+and complete IBKR login/consent. Keep `callbackPort` at `8765` so reconnects
+reuse the same registered redirect URI.
+
+Configured `mcp.read` is **never widened** by protected-resource
+`scopes_supported` or a WWW-Authenticate `scope` list. IBKR advertises
+`mcp.write` and `mcp.orders.submit` on that metadata; this client still
+registers and opens authorize with `scope=mcp.read` only. If a read-only
+grant cannot be enforced, authorize fails closed **before** the browser
+opens. Write/order remote tools are also refused at the local MCP adapter
+(`get_account_summary` / `get_account_positions` only).
+
 The wildcard is accepted only for IBKR's `mcp.read` probe. Authorizing this
-profile confirms access to IBKR's official read scope; generic `trading_account`
-and `trading_positions` calls stay disabled until IBKR publishes stable read
-tool names that Vibe-Trading can map safely. A config that adds `mcp.write` must
-pin an explicit tool allowlist and still passes through the live order guard.
+profile confirms access to IBKR's official read scope; the connector maps the
+verified `get_account_summary` / `get_account_positions` tools into generic
+account and position reads. Adding `mcp.write` or `mcp.orders.submit` to a **read-only** seed is
+rejected. An explicit trading-capability seed
+(`packaging/ibkr-official-mcp-readonly/agent.ibkr-trading.json`, profile
+`ibkr-live-official-mcp-trading`) lists the documented
+`mcp.read` + `mcp.write` + `mcp.orders.submit` set by name. That grant
+authorizes trading capability on the connection; it does not expose order
+placement through `vibe-trading-mcp`. Metadata still cannot add extra scopes.
 
 If IBKR issues a pre-registered OAuth client, add `clientId` and `clientSecret`
 inside `auth`.
+
+**HTTP 403 block pages are not treated as OAuth bugs.** An unauthenticated GET
+to `https://api.ibkr.com/v1/api/mcp-public` that returns HTML `403 Access Denied`
+(no `WWW-Authenticate` challenge) is an access block. This client stops after
+that one request: it does not retry, does not switch User-Agent to Mozilla,
+and does not re-target the endpoint through another network path. Protocol
+compatibility (public-client metadata, redirect URI, RFC 8414 issuer
+alignment) is covered by mock authorization-server tests; mock success is not
+live success. Owner OAuth is the remaining live step when the endpoint issues
+a normal 401 MCP challenge.
 
 ### Config reference
 
